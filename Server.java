@@ -20,8 +20,18 @@ public class Server {
         this.port = port;
         this.poolSize = poolSize;
         this.pool = Executors.newFixedThreadPool(poolSize);
+
         File dir = new File("fichiers");
+        if (!dir.exists()) {
+            dir.mkdirs();
+            System.out.println("Dossier 'fichiers' créé (il était manquant)");
+        }
+
         this.files = dir.listFiles();
+        if (this.files == null || this.files.length == 0) {
+            System.out.println("Aucun fichier disponible dans le dossier 'fichiers'. Arrêt du serveur.");
+            System.exit(1);
+        }
         try {
             this.server = new ServerSocket(port);
             System.out.println("Serveur demarre sur le port " + port);
