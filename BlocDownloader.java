@@ -9,12 +9,14 @@ public class BlocDownloader implements Callable<byte[]> {
     private final int fileIndex;
     private final int blocIndex;
     private static final Logger logger = Log.setup("BlocDownloader", "blocdownloader.log");
+    private final String clientId;
 
-    public BlocDownloader(String serverAddress, int serverPort, int fileIndex, int blocIndex) {
+    public BlocDownloader(String serverAddress, int serverPort, int fileIndex, int blocIndex, String clientId) {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         this.fileIndex = fileIndex;
         this.blocIndex = blocIndex;
+        this.clientId = clientId;
     }
 
     @Override
@@ -31,7 +33,8 @@ public class BlocDownloader implements Callable<byte[]> {
         ) {
             socket.setSoTimeout(2000); // 2 secondes max de lecture par bloc
     
-            out.writeUTF("BLOCK_DOWNLOAD");
+            out.writeUTF("BLOCK_DOWNLOAD " + clientId);
+
             out.flush();
     
             if (Thread.currentThread().isInterrupted()) {
@@ -44,10 +47,11 @@ public class BlocDownloader implements Callable<byte[]> {
     
             int tailleBloc = in.readInt();
             // On vérifie la taille avant d'allouer la buffer 
-            if (tailleBloc == -1) {
+            if (tailleBloc <= 0) {
                 logger.warning("Serveur a rejeté le téléchargement du bloc " + blocIndex);
                 return new byte[0];
             }
+
             
             byte[] buffer = new byte[tailleBloc];
     

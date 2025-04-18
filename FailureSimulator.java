@@ -1,19 +1,13 @@
-import java.net.InetAddress;
-import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.*;
 
 public class FailureSimulator {
 
-    private final List<Socket> activeTransfers = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, Long> activeTransfers = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-
-    private final double probability; // entre 0.0 et 1.0
+    private final double probability;
     private final int intervalSeconds;
-    private final Set<InetAddress> disconnectedClients = ConcurrentHashMap.newKeySet();
-
-
-
+    private final Set<String> disconnectedClients = ConcurrentHashMap.newKeySet();
 
     public FailureSimulator(double probability, int intervalSeconds) {
         this.probability = probability;
@@ -28,40 +22,37 @@ public class FailureSimulator {
         scheduler.shutdownNow();
     }
 
-    public void registerTransfer(Socket socket) {
-        activeTransfers.add(socket);
+    // Appelé côté serveur au moment où un CLIENT_MAIN démarre
+    public void registerTransfer(String clientId) {
+        activeTransfers.put(clientId, System.currentTimeMillis());
     }
 
-
-    public boolean isDisconnected(InetAddress address) {
-        return disconnectedClients.contains(address);
+    public void unregisterTransfer(String clientId) {
+        activeTransfers.remove(clientId);
     }
 
-    public void unregisterTransfer(Socket socket) {
-        activeTransfers.remove(socket);
-        disconnectedClients.add(socket.getInetAddress());
+    public boolean isDisconnected(String clientId) {
+        if (probability == 0.0) return false;
+        return disconnectedClients.contains(clientId);
     }
 
     private void maybeInterruptConnection() {
-        System.out.println(activeTransfers);
-        if (Math.random() < probability) {
+        System.out.println("Transferts actifs : " + activeTransfers.keySet());
 
-            synchronized (activeTransfers) {
-                if (!activeTransfers.isEmpty()) {
+        if (Math.random() < probability && !activeTransfers.isEmpty()) {
+            List<String> clients = new ArrayList<>(activeTransfers.keySet());
+            String clientId = clients.get(new Random().nextInt(clients.size()));
+            long startTime = activeTransfers.get(clientId);
+            long duration = System.currentTimeMillis() - startTime;
 
-                    int index = new Random().nextInt(activeTransfers.size());
-                    Socket socket = activeTransfers.get(index);
-                    try {
-                        System.out.println(">>> Simulating failure: closing connection " + socket);
-                        socket.getOutputStream().write("INTERRUPTED".getBytes()); // facultatif
-                        socket.close();
-                        activeTransfers.remove(socket);
-                    } catch (Exception e) {
-                        System.err.println("Error while closing socket: " + e.getMessage());
-                    }
-                    
-                }
+            if (duration < 3000) {
+                System.out.println("Connexion trop récente pour coupure : " + clientId);
+                return;
             }
+
+            System.out.println(">>> Simulating failure: marking disconnected " + clientId);
+            disconnectedClients.add(clientId);
+            activeTransfers.remove(clientId);
         }
     }
 }

@@ -19,6 +19,8 @@ public class BlockSlave implements Runnable {
 
     @Override
     public void run() {
+        System.out.println("BlocSlave lancé pour " + socket);
+
         // Logique de traitement pour REQUIRE <fichier> <bloc>
         try (
             DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
@@ -28,6 +30,7 @@ public class BlockSlave implements Runnable {
             // Lire la demande du client
             socket.setSoTimeout(3000); // Timeout de lecture : 3 secondes
             String commande = inputClient.readUTF();
+            System.out.println("Commande reçue : " + commande);
             logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
             if (commande.startsWith("REQUIRE")) {
                 // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
