@@ -1,46 +1,37 @@
-import java.io.*;
-import java.net.*;
-import java.util.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.net.Socket;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
-public class Slave implements Runnable {
-    private Socket socket;
-    private File[] files;
-    private static final int tailleBloc = 1024; // Taille d'un bloc de téléchargement (en octets)
-    private CopyOnWriteArrayList<String> trustedClients;
-    private static final Logger logger = Log.setup("Slave", "slave.log");
+public class ClientSlave implements Runnable {
+    private final Socket socket;
+    private final File[] files;
+    private final CopyOnWriteArrayList<String> trustedClients;
+    private static final Logger logger = Log.setup("ClientSlave", "client_slave.log");
 
-    public Slave(Socket socket, File[] files, CopyOnWriteArrayList<String> trustedClients) {
+
+    public ClientSlave(Socket socket, File[] files, CopyOnWriteArrayList<String> trustedClients) {
         this.socket = socket;
         this.files = files;
         this.trustedClients = trustedClients;
     }
 
-    public Slave(Socket socket, File[] files) {
-        this.socket = socket;
-        this.files = files;
-    }
-
     @Override
     public void run() {
+        // Logique de traitement pour CLIENT_MAIN
+        // LIST, HASH, etc.
         try (
             DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
             DataInputStream inputClient = new DataInputStream(socket.getInputStream())
         ) {
-            //Interruption thread
-            // Lire la demande du client
-            socket.setSoTimeout(3000); // Timeout de lecture : 3 secondes
-            String commande = inputClient.readUTF();
-            logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
-            
-            if ("LIST".equals(commande)) {
+            String listCommande = inputClient.readUTF();
+            logger.info(listCommande + " : " + socket.getInetAddress().getHostAddress());
+            if ("LIST".equals(listCommande)) {
                 // Envoyer la liste des fichiers disponibles au client
                 sendFileList(outputClient);
-            } else if (commande.startsWith("REQUIRE")) {
-                // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
-                handleDownload(commande, outputClient);
-                return;
             }
 
             String hashCommande = inputClient.readUTF();
@@ -48,10 +39,12 @@ public class Slave implements Runnable {
                 // Si la commande est de type "HASH", on gère la vérification du hash
                 handleFileHash(inputClient, outputClient, hashCommande);
             } 
-        } catch (IOException e) {
-            logger.warning("Erreur Slave : " + e.getMessage());
+
+        } catch(Exception e) {
             e.printStackTrace();
+            logger.warning("Erreur dans ClientSlave : " + e.getMessage());
         }
+        
     }
 
     private void sendFileList(DataOutputStream outputClient) throws IOException {
@@ -102,43 +95,6 @@ public class Slave implements Runnable {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-    }
-
-    private void handleDownload(String commande, DataOutputStream outputClient) throws IOException {
-        // Extraire l'index du fichier et l'index du bloc à télécharger
-        logger.info("Traitement de la commande de téléchargement.");
-        String[] parts = commande.split(" ");
-        int fileIndex = Integer.parseInt(parts[1]);
-        int blockIndex = Integer.parseInt(parts[2]);
-        logger.info(commande);
-
-        File fichier = files[fileIndex];
-        long fileSize = fichier.length();
-        long startByte = blockIndex * tailleBloc;
-        long endByte = Math.min(startByte + tailleBloc, fileSize);
-        logger.info("Fichier : " + fichier.getName() + ", Bloc : " + blockIndex + ", Taille : " + (endByte - startByte) + " octets");
-
-        // Envoi du nom et de la taille du bloc
-        outputClient.writeInt((int)(endByte - startByte)); // Taille du bloc
-
-        // Lecture du fichier et envoi du bloc au client
-        try (FileInputStream fis = new FileInputStream(fichier)) {
-            byte[] buffer = new byte[tailleBloc];
-            fis.skip(startByte); // Sauter jusqu'à l'index du bloc
-        
-            int bytesRead = fis.read(buffer, 0, (int)(endByte - startByte));
-            if (bytesRead > 0) {
-                outputClient.write(buffer, 0, bytesRead); // Envoi du bloc au client
-            }
-        
-            outputClient.flush(); // S'assure que les données sont bien envoyées
-        
-            System.out.println("Bloc " + blockIndex + " du fichier " + fichier.getName() + " envoyé.");
-        } catch (SocketException | EOFException e) {
-            logger.warning("Connexion interrompue par le serveur pendant l'envoi du bloc : " + e.getMessage());
-            return; // Interrompt l'exécution
-        }
-        
     }
 
     public static String bytesToHex(byte[] bytes) {
