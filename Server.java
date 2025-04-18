@@ -10,12 +10,14 @@ public class Server {
     private final CopyOnWriteArrayList<String> trustedClients;
     private final Semaphore clientSemaphore;
     private final Logger logger = Logger.getLogger("Server");
+    private FailureSimulator failureSimulator;
 
-    public Server(int port, int poolSize) {
+    public Server(int port, int poolSize, FailureSimulator failureSimulator) {
         this.port = port;
         this.pool = Executors.newFixedThreadPool(poolSize);
         this.trustedClients = new CopyOnWriteArrayList<>();
         this.clientSemaphore = new Semaphore(poolSize/4);
+        this.failureSimulator = failureSimulator;
 
         // Charge les fichiers à partir du répertoire "fichiers"
         File dir = new File("Fichiers");
@@ -45,12 +47,15 @@ public class Server {
                 logger.info("-----------CLIENT_MAIN connecté : " + socket.getInetAddress());
             
                 pool.execute(() -> {
+                    failureSimulator.registerTransfer(socket); // quand le téléchargement commence
                     try {
                         new ClientSlave(socket, files, trustedClients).run();
+
                     } catch (Exception e) {
                         logger.warning("Erreur CLIENT_MAIN : " + e.getMessage());
                     } finally {
                         clientSemaphore.release();
+                        failureSimulator.unregisterTransfer(socket); // quand le téléchargement se termine ou échoue
                         try {
                             socket.close();
                         } catch (IOException ignored) {}
@@ -88,8 +93,14 @@ public class Server {
 
     public static void main(String[] args) throws IOException {
         int port = 12345; // Port du serveur
-        int poolSize = 10;  // Taille du pool de threads
-        Server server = new Server(port, poolSize);
+        int poolSize = 16;  // Taille du pool de threads
+
+        FailureSimulator failureSimulator = new FailureSimulator(0.3, 2); // 30% de chances toutes les 10s
+        failureSimulator.start();
+
+        Server server = new Server(port, poolSize, failureSimulator);
         server.start();
+
+
     }
 }

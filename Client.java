@@ -84,10 +84,14 @@ public class Client {
             String hashHex = bytesToHex(hash);
             System.out.println("Hash du fichier téléchargé : " + hashHex);
             logger.info("Hash du fichier téléchargé : " + hashHex);
-            
+                
+
             output.writeUTF("HASH " + fileIndex);  // Envoi de la commande HASH
             output.writeUTF(hashHex);  // Envoi du hash au serveur
             
+        }catch(SocketException e) {
+            System.out.println("Serveur fermé");
+            return;
         } catch (Exception e) {
             logger.warning("Erreur Client : " + e.getMessage());
             e.printStackTrace();
