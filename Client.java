@@ -28,20 +28,21 @@ public class Client {
 
                 String status = input.readUTF();
 
-                if ("WAITING_FOR_HELP".equals(status)) {
-                    System.out.println("Serveur surchargé. Tentative de délégation en cours...");
+                while (!"WELCOME".equals(status)) {
+                    if ("WAITING_FOR_HELP".equals(status)) {
+                        System.out.println("Serveur surchargé. Tentative de délégation en cours...");
+                    } else if ("SERVER_BUSY".equals(status)) {
+                        System.out.println("Aucun client trusted n’a accepté. Veuillez réessayer plus tard.");
+                        return;
+                    } else {
+                        System.out.println("En attente d'une place ou d'une délégation... (" + status + ")");
+                    }
+
+                    // On attend un nouveau message du serveur
                     status = input.readUTF();
                 }
 
-                if ("SERVER_BUSY".equals(status)) {
-                    System.out.println("Aucun client trusted n’a accepté. Veuillez réessayer plus tard.");
-                    return;
-                }
-
-                if (!"WELCOME".equals(status)) {
-                    System.out.println("Réponse inattendue du serveur : " + status);
-                    return;
-                }
+                System.out.println("Bienvenue, téléchargement possible !");
 
                 // Demande de liste
                 output.writeUTF("LIST");
@@ -103,8 +104,8 @@ public class Client {
                 }
 
                 if (!fichierComplet) {
-                    System.out.println("Téléchargement interrompu : fichier incomplet, non sauvegardé.");
-                    logger.warning("Téléchargement incomplet, certains blocs sont manquants.");
+                    System.out.println("Téléchargement interrompu : fichier incomplet, non sauvegardé.(Le serveur vous a déconnecté)");
+                    logger.warning("Téléchargement incomplet, certains blocs sont manquants. (Serveur vous a déconnecté)");
                     for (Future<byte[]> f : resultats) f.cancel(true);
                     blocPool.shutdownNow();
                     return;

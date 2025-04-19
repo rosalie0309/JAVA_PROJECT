@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.*;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -9,7 +10,7 @@ import java.util.logging.Logger;
 import java.lang.Thread;
 
 
-public class Server {
+public class Server implements ClientDisconnectionListener {
     private final int port;
     private final ExecutorService pool;
     private final File[] files;
@@ -20,8 +21,18 @@ public class Server {
     private final Map<String, String> tokenMap = new ConcurrentHashMap<>();
     private final Set<InetAddress> clientsDeconnectes = ConcurrentHashMap.newKeySet();
     private final Map<Socket, Long> connectedAt = new ConcurrentHashMap<>();
+    // POur la gestion de la file d'attente 
+    private final Queue<QueuedClient> waitingClients = new ConcurrentLinkedQueue<>();
 
+    private static class QueuedClient {
+        Socket socket;
+        String clientId;
 
+        public QueuedClient(Socket socket, String clientId) {
+            this.socket = socket;
+            this.clientId = clientId;
+        }
+    }
 
 
     public Server(int port, int poolSize, FailureSimulator failureSimulator) {
@@ -95,6 +106,64 @@ public class Server {
         }
     }
 
+    // Méthode pour reveiller un client en attente lorsqu'un slot se libère 
+
+
+    public void onClientDisconnected(String clientId) {
+        logger.info("Client déconnecté : " + clientId + " — tentative de réveiller un client en attente.");
+    
+        synchronized (waitingClients) {
+            if (!waitingClients.isEmpty()) {
+                QueuedClient next = waitingClients.poll();  // retire le premier en file
+                try {
+                    if (next.socket.isClosed() || !next.socket.isConnected()) {
+                        logger.warning("Socket du client " + next.clientId + " est déjà fermé ou non connecté. Retrait de la file.");
+                        return;
+                    }
+                    
+                    try {
+                        DataOutputStream out = new DataOutputStream(next.socket.getOutputStream());
+                        out.writeUTF("WELCOME");
+                        out.flush();
+                    } catch (IOException e) {
+                        logger.warning("Erreur d’écriture vers le client en attente " + next.clientId + " : " + e.getMessage());
+                        try { next.socket.close(); } catch (IOException ignored) {}
+                        return;
+                    }
+                    
+    
+                    logger.info("Client réveillé depuis la file : " + next.clientId);
+                    connectedAt.put(next.socket, System.currentTimeMillis());
+                    clientSemaphore.acquire(); // Réserve le slot immédiatement
+    
+                    logger.info("Début du traitement du client réveillé");
+                    pool.execute(() -> {
+                        failureSimulator.registerTransfer(next.clientId, next.socket);
+                        try {
+                            new ClientSlave(next.socket, files, trustedClients).run();
+                        } catch (Exception e) {
+                            logger.warning("Erreur CLIENT_MAIN en file : " + e.getMessage());
+                        } finally {
+                            logger.info("Fin du client en attente : " + next.clientId);
+                            clientSemaphore.release();
+                            failureSimulator.unregisterTransfer(next.clientId);
+                            try {
+                                next.socket.close();
+                            } catch (IOException ignored) {}
+                        }
+                    });
+    
+                } catch (Exception e) {
+                    logger.warning("Erreur lors du réveil d’un client en attente : " + e.getMessage());
+                    try {
+                        next.socket.close();
+                    } catch (IOException ignored) {}
+                }
+            }
+        }
+    }
+    
+
     private void handleConnection(Socket socket) {
         try {
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
@@ -105,32 +174,29 @@ public class Server {
             String type = split[0];
             String clientId = split.length > 1 ? split[1] : socket.getRemoteSocketAddress().toString();
             
-
             if ("CLIENT_MAIN".equals(type)) {
                 if (!clientSemaphore.tryAcquire()) {
                     logger.warning("Capacité atteinte, tentative de délégation au client trusted...");
                     logger.warning("Capacité atteinte : " + clientSemaphore.availablePermits() + " places restantes");
-    
+            
                     String trustedIp = choisirClientTrusted();
                     if (trustedIp != null && envoyerDemandeDelegation(trustedIp)) {
                         envoyerTokenAuClient(socket, trustedIp);
                         return;
                     }
-    
-                    logger.warning("Aucun client trusted disponible ou délégation refusée. Connexion rejetée.");
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
+            
+                    // Aucun client trusted disponible ou refus de délégation → on met en attente
+                    synchronized (waitingClients) {
+                        waitingClients.add(new QueuedClient(socket, clientId));
+                        logger.info("Client ajouté à la file d’attente : " + clientId);
                     }
-                    output.writeUTF("SERVER_BUSY");
-                    output.flush();
-                    socket.close();
+            
+                    // Le client attendra un slot, ne rien faire ici
                     return;
                 } else {
                     logger.info("Slot de téléchargement acquis pour " + clientId);
                 }
-    
+            
                 output.writeUTF("WELCOME");
                 output.flush();
                 connectedAt.put(socket, System.currentTimeMillis());
@@ -138,7 +204,7 @@ public class Server {
                 logger.info("-----------CLIENT_MAIN connecté : " + clientId);
 
                 pool.execute(() -> {
-                    failureSimulator.registerTransfer(clientId); 
+                    failureSimulator.registerTransfer(clientId, socket); 
                     try {
                         new ClientSlave(socket, files, trustedClients).run();
                     } catch (Exception e) {
@@ -204,7 +270,9 @@ public class Server {
         failureSimulator.start();
 
         Server server = new Server(port, poolSize, failureSimulator);
+        failureSimulator.setDisconnectionListener(server::onClientDisconnected);
         server.start();
+        
 
         server.afficherClientsDeConfiance();
     }
