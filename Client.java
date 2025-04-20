@@ -14,14 +14,15 @@ public class Client {
         Socket socket = new Socket("127.0.0.1", 12345);
         DataOutputStream output = new DataOutputStream(socket.getOutputStream());
         DataInputStream input = new DataInputStream(socket.getInputStream());
-        Scanner sc = new Scanner(System.in)
+        Scanner sc = new Scanner(System.in);
         ) {
             output.writeUTF("CLIENT_MAIN");
             output.flush();
 
             // Demande de la liste des fichiers
             output.writeUTF("LIST");
-            
+            output.flush();
+
             int nbFichiers = input.readInt();
             List<String> noms = new ArrayList<>();
             List<Long> tailles = new ArrayList<>();
@@ -48,13 +49,28 @@ public class Client {
             byte[] fichierRecu = new byte[(int) tailleFichier];
             ExecutorService pool = Executors.newFixedThreadPool(Dc);
             List<Future<byte[]>> resultats = new ArrayList<>();
-            
+
             // Téléchargement des blocs
             for (int i = 0; i < nbBlocs; i++) {
                 BlocDownloader tache = new BlocDownloader("127.0.0.1", 12345, fileIndex, i);
                 Future<byte[]> future = pool.submit(tache);
                 resultats.add(future);
             }
+
+            socket.setSoTimeout(2000); // 2 secondes
+try {
+    int test = input.read();
+    if (test == -1) {
+        System.out.println("Connexion fermée proprement par le serveur");
+    } else {
+        System.out.println("Octet reçu (connexion vivante)");
+    }
+} catch (SocketTimeoutException e) {
+    System.out.println("Aucune réponse du serveur (timeout)");
+} catch (IOException e) {
+    System.out.println("Connexion cassée (I/O) : " + e.getMessage());
+}
+            //while i < nbBlocs && !socket.isClosed()
             
             // Réassemblage
             for (int i = 0; i < resultats.size(); i++) {
@@ -88,10 +104,18 @@ public class Client {
 
             output.writeUTF("HASH " + fileIndex);  // Envoi de la commande HASH
             output.writeUTF(hashHex);  // Envoi du hash au serveur
-            
-        }catch(SocketException e) {
-            System.out.println("Serveur fermé");
-            return;
+
+            socket.close();
+            output.close();
+            input.close();
+            sc.close();
+
+        } catch (SocketException e) {
+            System.out.println("Serveur fermé ou connexion interrompue.");
+            logger.warning("Serveur fermé ou connexion interrompue.");
+        } catch (IOException e) {
+            logger.warning("Erreur Client : " + e.getMessage());
+            e.printStackTrace();
         } catch (Exception e) {
             logger.warning("Erreur Client : " + e.getMessage());
             e.printStackTrace();

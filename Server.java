@@ -95,7 +95,7 @@ public class Server {
         int port = 12345; // Port du serveur
         int poolSize = 16;  // Taille du pool de threads
 
-        FailureSimulator failureSimulator = new FailureSimulator(0.3, 2); // 30% de chances toutes les 10s
+        FailureSimulator failureSimulator = new FailureSimulator(0.3, 2); // 30% de chances toutes les 2 secondes    
         failureSimulator.start();
 
         Server server = new Server(port, poolSize, failureSimulator);

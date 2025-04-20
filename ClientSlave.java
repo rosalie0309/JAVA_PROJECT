@@ -74,6 +74,8 @@ public class ClientSlave implements Runnable {
             logger.info("hashServ : " + hashServeur);
             String hashClient = inputClient.readUTF(); // Hash reçu du client
             logger.info("hashCli : " + hashClient);
+            System.out.println("Hash du fichier sur le serveur : " + hashServeur);
+            System.out.println("Hash du fichier sur le client : " + hashClient);
 
         // Comparer les hashes
         if (hashServeur.equals(hashClient)) {
