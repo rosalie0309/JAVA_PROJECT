@@ -27,18 +27,25 @@ public class ClientSlave implements Runnable {
             DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
             DataInputStream inputClient = new DataInputStream(socket.getInputStream())
         ) {
-            String listCommande = inputClient.readUTF();
-            logger.info(listCommande + " : " + socket.getInetAddress().getHostAddress());
-            if ("LIST".equals(listCommande)) {
-                // Envoyer la liste des fichiers disponibles au client
-                sendFileList(outputClient);
-            }
+            outer : while(true) {
+                String commande = inputClient.readUTF();
+                logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
+                if ("LIST".equals(commande)) {
+                    // Envoyer la liste des fichiers disponibles au client
+                    sendFileList(outputClient);
+                }
 
-            String hashCommande = inputClient.readUTF();
-            if (hashCommande.startsWith("HASH")) {
-                // Si la commande est de type "HASH", on gère la vérification du hash
-                handleFileHash(inputClient, outputClient, hashCommande);
-            } 
+                // TEST déconnexion client
+                if ("PING".equals(commande)) {
+                    outputClient.writeUTF("PONG");
+                }
+                
+                if (commande.startsWith("HASH")) {
+                    // Si la commande est de type "HASH", on gère la vérification du hash
+                    handleFileHash(inputClient, outputClient, commande);
+                    break outer;
+                } 
+            }
 
         } catch(Exception e) {
             e.printStackTrace();

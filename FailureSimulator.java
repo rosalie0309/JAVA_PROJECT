@@ -41,7 +41,7 @@ public class FailureSimulator {
                     int index = new Random().nextInt(activeTransfers.size());
                     Socket socket = activeTransfers.get(index);
                     try {
-                        System.out.println(">>> Simulating failure: closing connection " + socket);
+                        System.out.println(">>> Simulating failure: closing connection");
                         socket.close();
                         activeTransfers.remove(socket);
                     } catch (Exception e) {

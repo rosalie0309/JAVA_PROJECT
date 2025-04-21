@@ -42,6 +42,9 @@ public class Client {
                 System.out.println("Indice invalide.");
                 return;
             }
+
+            if(isSocketClosed(input, output)) return;
+            
             String nomFichier = noms.get(fileIndex);
             long tailleFichier = tailles.get(fileIndex);
             int nbBlocs = (int) Math.ceil((double) tailleFichier / tailleBloc);
@@ -55,27 +58,22 @@ public class Client {
                 BlocDownloader tache = new BlocDownloader("127.0.0.1", 12345, fileIndex, i);
                 Future<byte[]> future = pool.submit(tache);
                 resultats.add(future);
+                if(isSocketClosed(input, output)) {
+                    pool.shutdownNow(); // Arrêter le pool si le socket est fermé
+                    System.out.println("Téléchargement annulé.");
+                    return;
+                };
             }
-
-            socket.setSoTimeout(2000); // 2 secondes
-try {
-    int test = input.read();
-    if (test == -1) {
-        System.out.println("Connexion fermée proprement par le serveur");
-    } else {
-        System.out.println("Octet reçu (connexion vivante)");
-    }
-} catch (SocketTimeoutException e) {
-    System.out.println("Aucune réponse du serveur (timeout)");
-} catch (IOException e) {
-    System.out.println("Connexion cassée (I/O) : " + e.getMessage());
-}
-            //while i < nbBlocs && !socket.isClosed()
             
             // Réassemblage
             for (int i = 0; i < resultats.size(); i++) {
                 byte[] bloc = resultats.get(i).get();
                 System.arraycopy(bloc, 0, fichierRecu, i * tailleBloc, bloc.length);
+                if(isSocketClosed(input, output)) {
+                    pool.shutdownNow(); // Arrêter le pool si le socket est fermé
+                    System.out.println("Téléchargement annulé.");
+                    return;
+                };
             }
             
             pool.shutdown();
@@ -89,18 +87,16 @@ try {
             try (FileOutputStream fos = new FileOutputStream(nomLocal)) {
                 fos.write(fichierRecu);
             }
-            // try (FileOutputStream fos = new FileOutputStream(nomLocal)) {
-            //     fos.write(fichierRecu);
-            // }
             System.out.println("Fichier téléchargé et enregistré sous : " + nomLocal);
             logger.info("Fichier téléchargé et enregistré sous : " + nomLocal);
+
+            if(isSocketClosed(input, output)) return;
             
             // Envoi du hash pour vérification (réutilisation du socket initial)
             byte[] hash = Digest.md5(nomLocal);
             String hashHex = bytesToHex(hash);
             System.out.println("Hash du fichier téléchargé : " + hashHex);
             logger.info("Hash du fichier téléchargé : " + hashHex);
-                
 
             output.writeUTF("HASH " + fileIndex);  // Envoi de la commande HASH
             output.writeUTF(hashHex);  // Envoi du hash au serveur
@@ -128,5 +124,17 @@ try {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    public static boolean isSocketClosed(DataInputStream in, DataOutputStream out) {
+        try {
+            out.writeUTF("PING");
+            if(in.readUTF().equals("PONG")) {
+                return false;
+            } 
+        } catch (IOException e) {
+            System.err.println("Socket fermé");
+        }
+        return true;
     }
 }

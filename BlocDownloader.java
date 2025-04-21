@@ -34,6 +34,7 @@ public class BlocDownloader implements Callable<byte[]> {
             logger.info("Taille du bloc " + blocIndex + " : " + tailleBloc + " octets");
             byte[] buffer = new byte[tailleBloc];
             in.readFully(buffer);
+            //Thread.sleep(5000);
             return buffer;
         } catch (Exception e) {
             System.err.println("Erreur lors du téléchargement du bloc " + blocIndex);
