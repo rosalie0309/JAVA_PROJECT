@@ -79,6 +79,7 @@ public class Client {
                 if(isSocketClosed(input, output)) {
                     pool.shutdownNow(); // Arrêter le pool si le socket est fermé
                     System.out.println("Téléchargement annulé.");
+                    monitorThread.interrupt();
                     return;
                 };
             }
@@ -90,6 +91,7 @@ public class Client {
                 if(isSocketClosed(input, output)) {
                     pool.shutdownNow(); // Arrêter le pool si le socket est fermé
                     System.out.println("Téléchargement annulé.");
+                    monitorThread.interrupt();
                     return;
                 };
             }
