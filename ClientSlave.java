@@ -3,6 +3,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
@@ -47,6 +48,9 @@ public class ClientSlave implements Runnable {
                 } 
             }
 
+        } catch(IOException e) {
+            System.out.println("Le client a été déconnecté.");
+            logger.warning("Client déconnecté");
         } catch(Exception e) {
             e.printStackTrace();
             logger.warning("Erreur dans ClientSlave : " + e.getMessage());

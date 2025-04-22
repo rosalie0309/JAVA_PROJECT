@@ -50,7 +50,6 @@ public class Server {
                     failureSimulator.registerTransfer(socket); // quand le téléchargement commence
                     try {
                         new ClientSlave(socket, files, trustedClients).run();
-
                     } catch (Exception e) {
                         logger.warning("Erreur CLIENT_MAIN : " + e.getMessage());
                     } finally {

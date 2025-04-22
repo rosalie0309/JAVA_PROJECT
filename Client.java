@@ -16,6 +16,7 @@ public class Client {
         DataInputStream input = new DataInputStream(socket.getInputStream());
         Scanner sc = new Scanner(System.in);
         ) {
+
             output.writeUTF("CLIENT_MAIN");
             output.flush();
 
@@ -24,6 +25,7 @@ public class Client {
             output.flush();
 
             int nbFichiers = input.readInt();
+            System.out.println("Nombre de fichiers disponibles : " + nbFichiers);
             List<String> noms = new ArrayList<>();
             List<Long> tailles = new ArrayList<>();
             
@@ -34,16 +36,32 @@ public class Client {
                 System.out.println(i + " : " + nom + " (" + taille + " octets)");
                 noms.add(nom);
                 tailles.add(taille);
-            }
+            }       
+            
+            Thread monitorThread = new Thread(() -> {
+                try {
+                    while (true) {
+                        if (isSocketClosed(input, output)) {
+                            System.out.println("\n[INFO] Socket fermé. Fin du programme.");
+                            System.exit(0);
+                        }
+                        Thread.sleep(100);
+                    }
+                } catch (InterruptedException e) {
+                    System.out.println("\n[INFO] Connexion interrompue ou erreur détectée.");
+                    System.exit(0);
+                }
+            });
+            monitorThread.setDaemon(true); // Permet de ne pas bloquer la fermeture du programme
+            monitorThread.start();
             
             System.out.print("Entrez le numéro du fichier à télécharger : ");
             int fileIndex = Integer.parseInt(sc.nextLine());
             if (fileIndex < 0 || fileIndex >= noms.size()) {
                 System.out.println("Indice invalide.");
+                monitorThread.interrupt();
                 return;
             }
-
-            if(isSocketClosed(input, output)) return;
             
             String nomFichier = noms.get(fileIndex);
             long tailleFichier = tailles.get(fileIndex);
@@ -89,8 +107,6 @@ public class Client {
             }
             System.out.println("Fichier téléchargé et enregistré sous : " + nomLocal);
             logger.info("Fichier téléchargé et enregistré sous : " + nomLocal);
-
-            if(isSocketClosed(input, output)) return;
             
             // Envoi du hash pour vérification (réutilisation du socket initial)
             byte[] hash = Digest.md5(nomLocal);
