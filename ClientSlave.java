@@ -24,12 +24,13 @@ public class ClientSlave implements Runnable {
             DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
             DataInputStream inputClient = new DataInputStream(socket.getInputStream())
         ) {
+            
             String listCommande = inputClient.readUTF();
             logger.info(listCommande + " : " + socket.getInetAddress().getHostAddress());
 
             if ("LIST".equals(listCommande)) {
-                outputClient.writeInt(1);  // Confirmation fictive
-                outputClient.flush();
+                outputClient.writeUTF("LIST_OK");
+                outputClient.flush();                
                 logger.info("Confirmation de vie envoyée au client avant LIST.");
                 sendFileList(outputClient);
             }
@@ -76,6 +77,7 @@ public class ClientSlave implements Runnable {
                     logger.info("Ajouté à la liste des clients de confiance : " + clientIp);
                 }
                 outputClient.writeUTF("OK");
+                outputClient.flush();
             } else {
                 System.out.println("Le fichier a été corrompu pendant le transfert.");
                 logger.warning("Le fichier a été corrompu pendant le transfert.");

@@ -117,44 +117,27 @@ public class Server implements ClientDisconnectionListener {
                 QueuedClient next = waitingClients.poll();  // retire le premier en file
                 try {
                     if (next.socket.isClosed() || !next.socket.isConnected()) {
-                        logger.warning("Socket du client " + next.clientId + " est déjà fermé ou non connecté. Retrait de la file.");
+                        logger.warning("Socket du client " + next.clientId + " est déjà fermée ou non connectée. Retrait de la file.");
                         return;
                     }
-                    
+    
+                    // On informe poliment le client qu'il est en attente, et on coupe proprement la socket.
                     try {
                         DataOutputStream out = new DataOutputStream(next.socket.getOutputStream());
-                        out.writeUTF("WELCOME");
+                        out.writeUTF("WAIT_IN_QUEUE");  // Message clair
                         out.flush();
                     } catch (IOException e) {
-                        logger.warning("Erreur d’écriture vers le client en attente " + next.clientId + " : " + e.getMessage());
-                        try { next.socket.close(); } catch (IOException ignored) {}
-                        return;
+                        logger.warning("Impossible d'écrire WAIT_IN_QUEUE à " + next.clientId + " : " + e.getMessage());
                     }
-                    
     
-                    logger.info("Client réveillé depuis la file : " + next.clientId);
-                    connectedAt.put(next.socket, System.currentTimeMillis());
-                    clientSemaphore.acquire(); // Réserve le slot immédiatement
+                    try {
+                        next.socket.close();  // Il devra se reconnecter
+                    } catch (IOException ignored) {}
     
-                    logger.info("Début du traitement du client réveillé");
-                    pool.execute(() -> {
-                        failureSimulator.registerTransfer(next.clientId, next.socket);
-                        try {
-                            new ClientSlave(next.socket, files, trustedClients).run();
-                        } catch (Exception e) {
-                            logger.warning("Erreur CLIENT_MAIN en file : " + e.getMessage());
-                        } finally {
-                            logger.info("Fin du client en attente : " + next.clientId);
-                            clientSemaphore.release();
-                            failureSimulator.unregisterTransfer(next.clientId);
-                            try {
-                                next.socket.close();
-                            } catch (IOException ignored) {}
-                        }
-                    });
+                    logger.info("Client " + next.clientId + " informé qu’il peut se reconnecter.");
     
                 } catch (Exception e) {
-                    logger.warning("Erreur lors du réveil d’un client en attente : " + e.getMessage());
+                    logger.warning("Erreur lors du traitement d’un client en attente : " + e.getMessage());
                     try {
                         next.socket.close();
                     } catch (IOException ignored) {}
@@ -163,6 +146,7 @@ public class Server implements ClientDisconnectionListener {
         }
     }
     
+
 
     private void handleConnection(Socket socket) {
         try {
@@ -215,19 +199,31 @@ public class Server implements ClientDisconnectionListener {
                         failureSimulator.unregisterTransfer(clientId);
                     
                         try {
+                            if (failureSimulator.isDisconnected(clientId)) {
+                                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+                                out.writeUTF("DISCONNECT");
+                                out.flush();
+                            }
+                        } catch (IOException e) {
+                            logger.warning("Impossible d'envoyer DISCONNECT à " + clientId + " : " + e.getMessage());
+                        }
+                    
+                        try {
                             socket.close();
                         } catch (IOException ignored) {}
+                    
                         logger.info("-----------CLIENT_MAIN terminé : " + clientId);
                     }
+                    
                     
                 });
             } else if ("BLOCK_DOWNLOAD".equals(type)) {
                 if (failureSimulator.isDisconnected(clientId)) {
                     logger.warning("Requête BLOCK_DOWNLOAD refusée : le client " + clientId + " a été déconnecté.");
                     try {
-                        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-                        out.writeInt(-1); // signal d’erreur
-                        out.flush();
+                        DataOutputStream outToClient = new DataOutputStream(socket.getOutputStream());
+                        outToClient.writeUTF("DISCONNECT");
+                        outToClient.flush();
                     } catch (IOException ignored) {}
                     try { socket.close(); } catch (IOException ignored) {}
                     return;
