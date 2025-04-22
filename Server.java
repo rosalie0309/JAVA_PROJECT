@@ -16,7 +16,7 @@ public class Server {
         this.port = port;
         this.pool = Executors.newFixedThreadPool(poolSize);
         this.trustedClients = new CopyOnWriteArrayList<>();
-        this.clientSemaphore = new Semaphore(poolSize/4);
+        this.clientSemaphore = new Semaphore(poolSize/4, true);
         this.failureSimulator = failureSimulator;
 
         // Charge les fichiers à partir du répertoire "fichiers"
@@ -95,7 +95,7 @@ public class Server {
         int poolSize = 16;  // Taille du pool de threads
 
         //FailureSimulator failureSimulator = new FailureSimulator(1.0, 4); 
-        FailureSimulator failureSimulator = new FailureSimulator(0.3, 5);// 30% de chances toutes les 5 secondes    
+        FailureSimulator failureSimulator = new FailureSimulator(0.3, 10);// 30% de chances toutes les 10 secondes    
         failureSimulator.start();
 
         Server server = new Server(port, poolSize, failureSimulator);
