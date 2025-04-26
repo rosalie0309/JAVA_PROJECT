@@ -1,61 +1,35 @@
-/**
- * Computing MD5 and SHA256 hashes
- */
+import java.io.FileInputStream;
+import java.security.MessageDigest;
 
-import java.io.*;
-import java.security.*;
-import java.math.BigInteger;
-
-public class Digest{
-    /* 
-     * Given a file name and the algorithm to be used, it returns a byte array
-     * with the digest. 
-     */
-    public static byte[] diggest(String fname, String algorithm)
-            throws IOException, NoSuchAlgorithmException{
-            byte[] digest=null; // the result
-            FileInputStream in = new FileInputStream(fname);
-            // Selecting the algorithm to be used
-            MessageDigest sha = MessageDigest.getInstance(algorithm);
-            // Reading the file
-            DigestInputStream din = new DigestInputStream(in, sha);
-            while (din.read() != -1) ; // read entire file
-            din.close();
-            // Computing the digest
-            digest = sha.digest();
-            return digest;
-    }
-
-    // Computing MD5
-    public static byte[] md5(String fname)
-            throws IOException, NoSuchAlgorithmException{
-            return Digest.diggest(fname, "MD5");
-    }
-
-    // Computing SHA-256
-    public static byte[] sha256(String fname)
-            throws IOException, NoSuchAlgorithmException{
-            return Digest.diggest(fname, "SHA-256");
-    }
+public class Digest {
 
     /**
-     * A main for testing purposes. 
-     * It is expected that the first argument is the path to the file to be
-     * analyzed. 
+     * Calcule le MD5 d'un fichier donné.
+     * @param filepath chemin du fichier
+     * @return string MD5 hexadécimal
      */
+    public static String computeMD5(String filepath) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            FileInputStream fis = new FileInputStream(filepath);
+            byte[] buffer = new byte[1024];
+            int read;
 
-    public static void main(String arg[]){
-        if (arg.length !=1){
-            System.out.println("[Error] No input file.\n Try java Digest filename");
-            return;
-        }
-        try{
-            String hex = new BigInteger(1, Digest.md5(arg[0])).toString(16);
-            System.out.println(hex);
-        } catch (IOException ex) {
-            System.err.println(ex);
-        } catch (NoSuchAlgorithmException ex) {
-            System.err.println(ex);
+            while ((read = fis.read(buffer)) != -1) {
+                md.update(buffer, 0, read);
+            }
+            fis.close();
+
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+
+        } catch (Exception e) {
+            System.err.println("Erreur calcul MD5: " + e.getMessage());
+            return null;
         }
     }
-}
+} 
