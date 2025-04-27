@@ -4,17 +4,18 @@ import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 public class ClientSlave implements Runnable {
     private final Socket socket;
     private final File[] files;
-    private final CopyOnWriteArrayList<String> trustedClients;
+    private final ArrayList<String> trustedClients;
     private static final Logger logger = Log.setup("ClientSlave", "client_slave.log");
-
-
-    public ClientSlave(Socket socket, File[] files, CopyOnWriteArrayList<String> trustedClients) {
+    
+    
+    public ClientSlave(Socket socket, File[] files, ArrayList<String> trustedClients) {
         this.socket = socket;
         this.files = files;
         this.trustedClients = trustedClients;
@@ -25,17 +26,23 @@ public class ClientSlave implements Runnable {
         // Logique de traitement pour CLIENT_MAIN
         // LIST, HASH, etc.
         try (
-            DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
-            DataInputStream inputClient = new DataInputStream(socket.getInputStream())
+        DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
+        DataInputStream inputClient = new DataInputStream(socket.getInputStream())
         ) {
+            outputClient.writeUTF("CLIENT_SLAVE");
             outer : while(true) {
                 String commande = inputClient.readUTF();
-                logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
+                
+                if(!commande.equals("PING")) logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
                 if ("LIST".equals(commande)) {
                     // Envoyer la liste des fichiers disponibles au client
                     sendFileList(outputClient);
                 }
-
+                
+                if (commande.startsWith("GET_INFO")) {
+                    infoOnFile(outputClient, commande);
+                }
+                
                 // TEST déconnexion client
                 if ("PING".equals(commande)) {
                     outputClient.writeUTF("PONG");
@@ -47,9 +54,9 @@ public class ClientSlave implements Runnable {
                     break outer;
                 } 
             }
-
+            
         } catch(IOException e) {
-            System.out.println("Le client a été déconnecté.");
+            System.out.println("Le client a ete deconnecte.");
             logger.warning("Client déconnecté");
         } catch(Exception e) {
             e.printStackTrace();
@@ -57,7 +64,7 @@ public class ClientSlave implements Runnable {
         }
         
     }
-
+    
     private void sendFileList(DataOutputStream outputClient) throws IOException {
         // Envoyer la liste des fichiers disponibles au client
         logger.info("Envoi de la liste des fichiers disponibles au client.");
@@ -70,7 +77,17 @@ public class ClientSlave implements Runnable {
             }
         }
     }
-
+    
+    private void infoOnFile(DataOutputStream outputClient, String commande) throws IOException {
+        // Envoyer les informations sur le fichier demandé au client
+        int fileIndex = Integer.parseInt(commande.split(" ")[1]);
+        File fichier = files[fileIndex];
+        long fileSize = fichier.length();
+        String fileName = fichier.getName();
+        outputClient.writeUTF(fileName);
+        outputClient.writeLong(fileSize);
+    }
+    
     private void handleFileHash(DataInputStream inputClient, DataOutputStream outputClient, String commande) throws IOException {
         // Recevoir et traiter le hash envoyé par le client
         logger.info("Traitement de la commande de hash.");
@@ -78,7 +95,7 @@ public class ClientSlave implements Runnable {
         logger.info(commande);
         int index = Integer.parseInt(fileIndex);
         File fichier = files[index];
-
+        
         String hashServeur;
         try {
             hashServeur = bytesToHex(Digest.md5(fichier.getPath()));
@@ -87,29 +104,29 @@ public class ClientSlave implements Runnable {
             logger.info("hashCli : " + hashClient);
             System.out.println("Hash du fichier sur le serveur : " + hashServeur);
             System.out.println("Hash du fichier sur le client : " + hashClient);
-
-        // Comparer les hashes
-        if (hashServeur.equals(hashClient)) {
-            System.out.println("Le fichier a bien été téléchargé et vérifié.");
-            // Ajout du client à la liste des clients de confiance
-            String clientInfo = socket.getInetAddress().getHostAddress();
-            synchronized (trustedClients) {
-                trustedClients.add(clientInfo);
-                logger.info("Ajouté à la liste des clients de confiance : " + clientInfo);
-                System.out.println("Ajouté à la liste des clients de confiance : " + clientInfo);
-            }            
-            outputClient.writeUTF("OK");
-        } else {
-            System.out.println("Le fichier a été corrompu pendant le transfert.");
-            logger.warning("Le fichier a été corrompu pendant le transfert.");
-            outputClient.writeUTF("ERROR");
-        }
+            
+            // Comparer les hashes
+            if (hashServeur.equals(hashClient)) {
+                System.out.println("Le fichier a bien été téléchargé et vérifié.");
+                // Ajout du client à la liste des clients de confiance
+                String clientInfo = socket.getInetAddress().getHostAddress();
+                synchronized (trustedClients) {
+                    trustedClients.add(clientInfo);
+                    logger.info("Ajouté à la liste des clients de confiance : " + clientInfo);
+                    System.out.println("Ajouté à la liste des clients de confiance : " + clientInfo);
+                }            
+                outputClient.writeUTF("OK");
+            } else {
+                System.out.println("Le fichier a été corrompu pendant le transfert.");
+                logger.warning("Le fichier a été corrompu pendant le transfert.");
+                outputClient.writeUTF("ERROR");
+            }
         } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
     }
-
+    
     public static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {

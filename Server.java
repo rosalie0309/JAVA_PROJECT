@@ -1,23 +1,28 @@
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
+import java.util.Scanner;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 public class Server {
     private final int port;
     private final ExecutorService pool;
     private final File[] files;
-    private final CopyOnWriteArrayList<String> trustedClients;
+    private ArrayList<String> trustedClients;
     private final Semaphore clientSemaphore;
-    private final Logger logger = Logger.getLogger("Server");
+    private static final Logger logger = Log.setup("Server", "server.log");
     private FailureSimulator failureSimulator;
+    private double probability;
 
-    public Server(int port, int poolSize, FailureSimulator failureSimulator) {
+    public Server(int port, int poolSize, FailureSimulator failureSimulator, double probability) {
         this.port = port;
         this.pool = Executors.newFixedThreadPool(poolSize);
-        this.trustedClients = new CopyOnWriteArrayList<>();
+        this.trustedClients = new ArrayList<>();
         this.clientSemaphore = new Semaphore(poolSize/4, true);
         this.failureSimulator = failureSimulator;
+        this.probability = probability;
 
         // Charge les fichiers à partir du répertoire "fichiers"
         File dir = new File("Fichiers");
@@ -47,14 +52,15 @@ public class Server {
                 logger.info("-----------CLIENT_MAIN connecté : " + socket.getInetAddress());
             
                 pool.execute(() -> {
-                    failureSimulator.registerTransfer(socket); // quand le téléchargement commence
+                    failureSimulator.registerTransfer(socket); 
                     try {
                         new ClientSlave(socket, files, trustedClients).run();
+                        //new ClientSlave(socket, files).run();
                     } catch (Exception e) {
                         logger.warning("Erreur CLIENT_MAIN : " + e.getMessage());
                     } finally {
                         clientSemaphore.release();
-                        failureSimulator.unregisterTransfer(socket); // quand le téléchargement se termine ou échoue
+                        failureSimulator.unregisterTransfer(socket); 
                         try {
                             socket.close();
                         } catch (IOException ignored) {}
@@ -91,14 +97,20 @@ public class Server {
     }
 
     public static void main(String[] args) throws IOException {
+
         int port = 12345; // Port du serveur
         int poolSize = 16;  // Taille du pool de threads
+        double failureProbability = 0.2; // Probabilité de défaillance
+
+        for(String arg : args) {
+            if(arg.startsWith("--P=")) failureProbability = Double.parseDouble((arg.split("=")[1]).replace(",", "."));
+        }
 
         //FailureSimulator failureSimulator = new FailureSimulator(1.0, 4); 
-        FailureSimulator failureSimulator = new FailureSimulator(0.3, 10);// 30% de chances toutes les 10 secondes    
+        FailureSimulator failureSimulator = new FailureSimulator(failureProbability, 5);// 30% de chances toutes les 10 secondes    
         failureSimulator.start();
 
-        Server server = new Server(port, poolSize, failureSimulator);
+        Server server = new Server(port, poolSize, failureSimulator, failureProbability);
         server.start();
 
 
