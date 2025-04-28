@@ -51,4 +51,12 @@ public class FailureSimulator {
         timer.cancel();
         trackedSockets.clear();
     }
+
+    public int getInterval() {
+        return intervalSeconds;
+    }
+
+    public double getProbability(){
+        return probability;
+    }
 }

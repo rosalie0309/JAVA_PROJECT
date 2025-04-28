@@ -1,125 +1,180 @@
 import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 
 public class Server {
-    private static final Logger logger = Logger.getLogger(Server.class.getName());
     private static final int PORT = 12345;
-    private static final Map<String, byte[]> fileStorage = new ConcurrentHashMap<>();
-    private static final Set<Socket> activeClients = ConcurrentHashMap.newKeySet();
+    private static final int MAX_CLIENTS = 2;
+    private static final Logger logger = ServerLogger.createLogger();
+    private static final Map<String, byte[]> files = new ConcurrentHashMap<>();
+    private static final Set<TrustedHelperInfo> trustedHelpers = ConcurrentHashMap.newKeySet();
     private static final Queue<Socket> waitingClients = new ConcurrentLinkedQueue<>();
-    private static final TrustedHelper trustedHelper = new TrustedHelper();
-    private static final int maxClients = 2; // default Cs=2
-    private static final FailureSimulator failureSimulator = new FailureSimulator(5, 0.3); // default T=5, P=0.3
+    private static final Random random = new Random();
+    private static ExecutorService clientExecutor = Executors.newCachedThreadPool();
+    private static int currentClients = 0;
+    private static FailureSimulator failureSimulator;
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         loadFiles();
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            logger.info("Server started on port: " + PORT);
 
-        // Ajouter manuellement des clients de confiance pour test
-        trustedHelper.addTrustedClient("FileA.txt", "trusted1");
-        trustedHelper.addTrustedClient("FileA.txt", "trusted2");
+            failureSimulator = new FailureSimulator(15, 0.3); // Démarrage avec 15s de délai
+            failureSimulator.start();
 
-        failureSimulator.start();
-        ServerSocket serverSocket = new ServerSocket(PORT);
-        logger.info("Server started on port: " + PORT);
-
-        while (true) {
-            Socket clientSocket = serverSocket.accept();
-
-            if (activeClients.size() < maxClients) {
-                activeClients.add(clientSocket);
-                failureSimulator.track(clientSocket);
-                new Thread(new ClientHandler(clientSocket)).start();
-            } else {
-                // Tentative de délégation à un client de confiance
-                String fileId = "FileA.txt"; // À ce stade, on suppose le fichier connu en avance pour la délégation
-                Optional<String> helper = trustedHelper.requestHelp(fileId, 0.8);
-                if (helper.isPresent()) {
-                    PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-                    logger.warning("Redirecting client to helper: " + helper.get());
-                    out.println("USE_HELPER " + helper.get());
-                    clientSocket.close();
-                } else {
-                    logger.warning("Server full. Queuing client: " + clientSocket);
-                    waitingClients.offer(clientSocket);
+            while (true) {
+                synchronized (Server.class) {
+                    if (currentClients >= MAX_CLIENTS) {
+                        try {
+                            Thread.sleep(100); // Petite pause si serveur saturé
+                            continue;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
                 }
+                Socket clientSocket = serverSocket.accept();
+                failureSimulator.track(clientSocket);
+                clientExecutor.submit(() -> handleClient(clientSocket));
             }
+        } catch (IOException e) {
+            logger.severe("Server error: " + e.getMessage());
         }
     }
 
     private static void loadFiles() {
         try {
-            File dir = new File("files");
-            for (File f : Objects.requireNonNull(dir.listFiles())) {
-                byte[] content = Files.readAllBytes(f.toPath());
-                fileStorage.put(f.getName(), content);
+            File directory = new File("files");
+            for (File file : directory.listFiles()) {
+                files.put(file.getName(), Files.readAllBytes(file.toPath()));
             }
+            logger.info("Files loaded: " + files.keySet());
         } catch (IOException e) {
             logger.severe("Failed to load files: " + e.getMessage());
         }
     }
 
-    static class ClientHandler implements Runnable {
-        private final Socket socket;
+    private static void handleClient(Socket clientSocket) {
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
 
-        public ClientHandler(Socket socket) {
-            this.socket = socket;
-        }
+            writer.write("WELCOME\n");
+            writer.flush();
 
-        @Override
-        public void run() {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                 PrintWriter writer = new PrintWriter(socket.getOutputStream(), true)) {
-
-                writer.println("WELCOME");
-                String request = reader.readLine();
-                if (request == null || !request.startsWith("REQUEST ")) {
-                    return;
-                }
-
-                String fileId = request.split(" ")[1];
-                byte[] fileData = fileStorage.get(fileId);
-                if (fileData == null) {
-                    writer.println("ERROR File not found");
-                    return;
-                }
-
-                int blockSize = 1024;
-                int totalBlocks = (int) Math.ceil(fileData.length / (double) blockSize);
-                writer.println(totalBlocks);
-
-                for (int i = 0; i < totalBlocks; i++) {
-                    String line = reader.readLine();
-                    if (line != null && line.startsWith("BLOCK ")) {
-                        int blockIndex = Integer.parseInt(line.split(" ")[2]);
-                        int start = blockIndex * blockSize;
-                        int end = Math.min(start + blockSize, fileData.length);
-                        socket.getOutputStream().write(fileData, start, end - start);
-                    }
-                }
-
-                String md5Line = reader.readLine();
-                if (md5Line != null && md5Line.startsWith("MD5 ")) {
-                    logger.info("Received MD5 from client: " + md5Line.split(" ")[1]);
-                }
-
-                // Ajouter ce client comme trusted une fois qu’il a tout fini
-                String clientAddress = socket.getInetAddress().getHostAddress();
-                trustedHelper.addTrustedClient(fileId, clientAddress);
-
-            } catch (Exception e) {
-                logger.warning("Exception with client: " + socket + ", Error: " + e.getMessage());
-            } finally {
-                try {
-                    socket.close();
-                } catch (IOException ignored) {}
-                activeClients.remove(socket);
-                failureSimulator.untrack(socket);
+            String request = reader.readLine();
+            if (request == null || !request.startsWith("REQUEST ")) {
+                clientSocket.close();
+                return;
             }
+
+            String fileName = request.substring(8).trim();
+
+            synchronized (Server.class) {
+                if (currentClients >= MAX_CLIENTS) {
+                    logger.warning("Server full, trying helper for client...");
+                    if (!redirectToTrustedHelper(clientSocket, fileName)) {
+                        logger.warning("No trusted helper available, client queued.");
+                        waitingClients.add(clientSocket);
+                    }
+                    return;
+                }
+                currentClients++;
+            }
+
+            if (!files.containsKey(fileName)) {
+                writer.write("ERROR File not found\n");
+                writer.flush();
+                clientSocket.close();
+                decreaseClientCount();
+                return;
+            }
+
+            byte[] fileData = files.get(fileName);
+            int blockSize = 1024;
+            int totalBlocks = (int) Math.ceil((double) fileData.length / blockSize);
+
+            writer.write(String.valueOf(totalBlocks) + "\n");
+            writer.flush();
+
+            while (true) {
+                String blockRequest = reader.readLine();
+                if (blockRequest == null) break;
+
+                if (blockRequest.startsWith("BLOCK ")) {
+                    String[] parts = blockRequest.split(" ");
+                    if (parts.length < 3) continue;
+
+                    int blockIndex = Integer.parseInt(parts[2]);
+                    int start = blockIndex * blockSize;
+                    int end = Math.min(fileData.length, start + blockSize);
+
+                    clientSocket.getOutputStream().write(fileData, start, end - start);
+                    clientSocket.getOutputStream().flush();
+
+                    logger.info("Sent block " + blockIndex + " to client.");
+                } else if (blockRequest.startsWith("MD5 ")) {
+                    logger.info("Received MD5 checksum: " + blockRequest.substring(4));
+                    break;
+                } else {
+                    logger.warning("Unknown request received: " + blockRequest);
+                }
+            }
+
+        } catch (IOException e) {
+            logger.warning("Error handling client: " + e.getMessage());
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException ignored) {}
+            decreaseClientCount();
+            tryServeWaitingClients();
         }
+    }
+
+    private static boolean redirectToTrustedHelper(Socket clientSocket, String fileName) {
+        try {
+            String token = generateToken();
+            int helperPort = 20000 + random.nextInt(5000);
+
+            TrustedHelperInfo helperInfo = new TrustedHelperInfo(token, helperPort, fileName);
+            trustedHelpers.add(helperInfo);
+
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
+            writer.write("USE_HELPER 127.0.0.1 " + helperPort + " " + token + "\n");
+            writer.flush();
+            clientSocket.close();
+
+            logger.info("Sent helper info to client: port=" + helperPort + " token=" + token);
+            return true;
+        } catch (IOException e) {
+            logger.warning("Failed to redirect client: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private static void decreaseClientCount() {
+        synchronized (Server.class) {
+            currentClients--;
+        }
+    }
+
+    private static void tryServeWaitingClients() {
+        Socket waitingClient = waitingClients.poll();
+        if (waitingClient != null) {
+            clientExecutor.submit(() -> handleClient(waitingClient));
+        }
+    }
+
+    private static String generateToken() {
+        return UUID.randomUUID().toString();
+    }
+
+    public static byte[] getFileContent(String fileId) {
+        return files.get(fileId);
     }
 }

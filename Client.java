@@ -1,153 +1,183 @@
 import java.io.*;
-import java.net.*;
-import java.util.*;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.util.Arrays;
 import java.util.concurrent.*;
-import java.util.logging.*;
+import java.util.logging.Logger;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
 
 public class Client {
-    private static final Logger logger = Logger.getLogger(Client.class.getName());
-
+    private static Logger logger;
     private String fileId;
-    private int port;
     private String host;
+    private int port;
     private int DC;
     private int blockSize = 1024;
     private volatile boolean isDisconnected = false;
+    private int clientId;
 
-    public Client(String host, int port, String fileId, int DC) {
+    public Client(String host, int port, String fileId, int DC, int clientId) {
         this.host = host;
         this.port = port;
         this.fileId = fileId;
         this.DC = DC;
+        this.clientId = clientId;
+        this.logger = ClientLogger.createLogger(clientId);
     }
 
     public void start() {
         try {
-            Socket socket = new Socket(host, port);
-            logger.info("Connected to server: " + socket);
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-
-            String line = reader.readLine();
-            if (line == null || line.equals("DISCONNECT")) {
-                logger.warning("Disconnected by server before start.");
-                return;
+            boolean success = attemptDownload(this.host, this.port, null);
+            if (success) {
+                logger.info("Download successful. Becoming a TrustedClient...");
+                becomeTrustedClient();
             }
-
-            if (line.startsWith("USE_HELPER")) {
-                String helperName = line.split(" ", 2)[1];
-                logger.warning("Server is full. You are redirected to helper client: " + helperName);
-                return; // in a real system we would now reconnect to helper
-            }
-
-            if (!"WELCOME".equals(line)) {
-                logger.warning("Unexpected server message: " + line);
-                return;
-            }
-
-            writer.write("REQUEST " + fileId + "\n");
-            writer.flush();
-
-            String response = reader.readLine();
-            if (response == null || response.equals("DISCONNECT")) {
-                logger.warning("Disconnected by server after request.");
-                return;
-            }
-
-            if (response.startsWith("ERROR")) {
-                logger.severe("Server responded with error: " + response);
-                return;
-            }
-
-            int totalBlocks = Integer.parseInt(response);
-            logger.info("Total blocks to download: " + totalBlocks);
-
-            byte[][] blocks = new byte[totalBlocks][];
-            ExecutorService executor = Executors.newFixedThreadPool(DC);
-            List<Future<Void>> futures = new ArrayList<>();
-
-            for (int i = 0; i < totalBlocks; i++) {
-                final int blockIndex = i;
-                futures.add(executor.submit(() -> {
-                    if (!isDisconnected) downloadBlock(blockIndex, blocks);
-                    return null;
-                }));
-            }
-
-            for (Future<Void> f : futures) f.get();
-            executor.shutdown();
-
-            if (isDisconnected) {
-                logger.warning("Client interrupted during download, exiting.");
-                return;
-            }
-
-            File downloadDir = new File("download");
-            if (!downloadDir.exists()) downloadDir.mkdir();
-
-            FileOutputStream fos = new FileOutputStream("download/downloaded-" + fileId + ".bin");
-            for (byte[] b : blocks) fos.write(b);
-            fos.close();
-            logger.info("Download complete.");
-
-            String md5 = Digest.computeMD5("download/downloaded-" + fileId + ".bin");
-            writer.write("MD5 " + md5 + "\n");
-            writer.flush();
-
-            logger.info("Sent MD5: " + md5);
-
-        } catch (IOException e) {
-            isDisconnected = true;
-            logger.severe("Client IO error: " + e.getMessage());
         } catch (Exception e) {
             logger.severe("Client error: " + e.getMessage());
         }
     }
 
-    private void downloadBlock(int index, byte[][] blocks) {
+    private boolean attemptDownload(String host, int port, String token) throws Exception {
+        Socket socket = null;
         try {
-            Socket blockSocket = new Socket(host, port);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(blockSocket.getInputStream()));
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(blockSocket.getOutputStream()));
+            socket = new Socket(host, port);
+            socket.setSoTimeout(5000);
+            logger.info("Connected to: " + host + ":" + port);
 
-            writer.write("BLOCK " + fileId + " " + index + "\n");
-            writer.flush();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 
-            InputStream in = blockSocket.getInputStream();
-            byte[] buffer = new byte[blockSize];
-            int read = in.read(buffer);
-            if (read == -1) throw new IOException("Server closed connection");
-            blocks[index] = Arrays.copyOf(buffer, read);
+            String line = reader.readLine();
+            if (line == null) {
+                logger.warning("Disconnected immediately after connection.");
+                return false;
+            }
+            
 
-            logger.info("Received block " + index);
+            if (line.startsWith("USE_HELPER")) {
+                // Traitement de la redirection
+                String[] parts = line.split(" ");
+                if (parts.length < 4) {
+                    logger.severe("Malformed USE_HELPER message.");
+                    return false;
+                }
+                String helperIp = parts[1];
+                int helperPort = Integer.parseInt(parts[2]);
+                String helperToken = parts[3];
+                socket.close();
+                return attemptDownload(helperIp, helperPort, helperToken);
+            }
 
-            blockSocket.close();
+            if (line.startsWith("WELCOME") || line.startsWith("WELCOME_FROM_TRUSTED")) {
+                if (token != null) {
+                    // Si connecté à un trusted, envoyer le token pour validation
+                    writer.write("TOKEN " + token + "\n");
+                    writer.flush();
+                    String response = reader.readLine();
+                    if (response == null || response.equals("REFUSE")) {
+                        logger.warning("Trusted helper refused the connection.");
+                        return false;
+                    }
+                }
+
+                // Envoyer la demande de fichier
+                writer.write("REQUEST " + fileId + "\n");
+                writer.flush();
+
+                String response = reader.readLine();
+                if (response == null || response.startsWith("DISCONNECT")) {
+                    logger.warning("Disconnected after request.");
+                    return false;
+                }
+
+                if (response.startsWith("ERROR")) {
+                    logger.severe("Server responded with error: " + response);
+                    return false;
+                }
+
+                int totalBlocks = Integer.parseInt(response.trim());
+                logger.info("Total blocks to download: " + totalBlocks);
+
+                socket.close(); // socket principale fermée après info sur nb de blocs
+
+                // Télécharger avec BlockDownloader
+                BlockDownloader downloader = new BlockDownloader(host, port, fileId, totalBlocks, DC, blockSize, logger);
+                byte[][] blocks = downloader.downloadAllBlocks();
+
+                if (isDisconnected) {
+                    logger.warning("Download interrupted.");
+                    return false;
+                }
+
+                File downloadDir = new File("download");
+                if (!downloadDir.exists()) downloadDir.mkdir();
+
+                FileOutputStream fos = new FileOutputStream("download/downloaded-" + fileId + "-" + clientId + ".bin");
+                for (byte[] b : blocks) fos.write(b);
+                fos.close();
+
+                logger.info("File downloaded successfully.");
+
+                return true;
+            }
+
+            logger.warning("Unexpected server message: " + line);
+            return false;
+
+        } catch (SocketTimeoutException e) {
+            logger.warning("Timeout: " + e.getMessage());
+            return false;
         } catch (IOException e) {
             isDisconnected = true;
-            logger.warning("Failed to download block " + index + ": " + e.getMessage());
+            logger.warning("IOException: " + e.getMessage());
+            logger.warning("Client interrupted during download. Download failed.");
+            return false;
+        } finally {
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
         }
     }
+
+    private void becomeTrustedClient() {
+        try {
+            int helperPort = 20000 + clientId;
+            String token = "localtoken-" + clientId; // on génère un token factice ici
+    
+            TrustedHelperInfo helperInfo = new TrustedHelperInfo(token, helperPort, fileId);
+            TrustedClient trustedClient = new TrustedClient(helperPort, helperInfo);
+            new Thread(trustedClient::start).start();
+            logger.info("Started TrustedClient on port " + helperPort);
+    
+        } catch (Exception e) {
+            logger.severe("Failed to become TrustedClient: " + e.getMessage());
+        }
+    }
+    
 
     public static void main(String[] args) {
         String host = "localhost";
         int port = 12345;
         String fileId = null;
-        int DC = 4;
+        int DC = 2;
+        int clientId = -1;
 
         for (String arg : args) {
             if (arg.startsWith("--file=")) fileId = arg.split("=")[1];
             else if (arg.startsWith("--DC=")) DC = Integer.parseInt(arg.split("=")[1]);
             else if (arg.startsWith("--port=")) port = Integer.parseInt(arg.split("=")[1]);
             else if (arg.startsWith("--host=")) host = arg.split("=")[1];
+            else if (arg.startsWith("--id=")) clientId = Integer.parseInt(arg.split("=")[1]);
         }
 
-        if (fileId == null) {
-            System.err.println("No file specified. Use --file=filename");
+        if (fileId == null || clientId == -1) {
+            System.err.println("Usage: --file=xxx --id=n");
             return;
         }
 
-        Client client = new Client(host, port, fileId, DC);
+        Client client = new Client(host, port, fileId, DC, clientId);
         client.start();
     }
 }
