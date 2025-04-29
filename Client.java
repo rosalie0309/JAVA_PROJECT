@@ -5,59 +5,60 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Classe Client qui gère le téléchargement de fichiers depuis un serveur.
- * Elle permet de télécharger un fichier en plusieurs blocs de manière parallèle.
- */
+* Classe Client qui gère le téléchargement de fichiers depuis un serveur.
+* Elle permet de télécharger un fichier en plusieurs blocs de manière
+* parallèle.
+*/
 public class Client {
     private int tailleBloc = 1024;
-    private int Dc = 4; 
+    private int Dc = 4;
     private Logger logger = Log.setup("Client", "client.log");
-    private String adresse = "127.0.0.1";
+    private String adresse = "192.168.77.116";
     private int port = 12345;
-
+    
     /**
-     * 
-     * @param args
-     */
+    * 
+    * @param args
+    */
     public static void main(String[] args) {
         Client c = new Client();
         int fileIndex = -1;
-
-        if(args.length > 0) {
+        
+        if (args.length > 0) {
             for (String arg : args) {
-                if (arg.startsWith("--file=")) fileIndex = Integer.parseInt(arg.split("=")[1]);
-                if (arg.startsWith("--DC=")) c.Dc = Integer.parseInt(arg.split("=")[1]);
-                if (arg.startsWith("--adresse=")) c.adresse = arg.split("=")[1];
-                if (arg.startsWith("--port=")) c.port = Integer.parseInt(arg.split("=")[1]);
+                if (arg.startsWith("--file="))
+                fileIndex = Integer.parseInt(arg.split("=")[1]);
+                if (arg.startsWith("--DC="))
+                c.Dc = Integer.parseInt(arg.split("=")[1]);
+                if (arg.startsWith("--adresse="))
+                c.adresse = arg.split("=")[1];
+                if (arg.startsWith("--port="))
+                c.port = Integer.parseInt(arg.split("=")[1]);
             }
         }
-
-
+        
         try (
         Socket socket = new Socket(c.adresse, c.port);
         DataOutputStream output = new DataOutputStream(socket.getOutputStream());
         DataInputStream input = new DataInputStream(socket.getInputStream());
-        Scanner sc = new Scanner(System.in);
-        ) {
-
+        Scanner sc = new Scanner(System.in);) {
+            
             output.writeUTF("CLIENT_MAIN");
             output.flush();
-
-
+            
             Thread monitorThread = verifyThread(input, output); // Création du thread de vérification de la connexion
             monitorThread.setDaemon(true); // Permet de ne pas bloquer la fermeture du programme
             
             String slave = input.readUTF();
-            if(slave.equals("CLIENT_SLAVE")) monitorThread.start(); // Attendre le début du clientSlave pour lancer le thread de vérification de la connexion
-        
-
+            if (slave.equals("CLIENT_SLAVE"))
+            monitorThread.start(); // Attendre le début du clientSlave pour lancer le thread de vérification de la
+            // connexion
             
-
-            if(args.length == 0 || fileIndex == -1) {
+            if (args.length == 0 || fileIndex == -1) {
                 // Demande de la liste des fichiers
                 output.writeUTF("LIST");
                 output.flush();
-
+                
                 int nbFichiers = input.readInt();
                 System.out.println("Nombre de fichiers disponibles : " + nbFichiers);
                 
@@ -66,7 +67,7 @@ public class Client {
                     String nom = input.readUTF();
                     long taille = input.readLong();
                     System.out.println(i + " : " + nom + " (" + taille + " octets)");
-                }       
+                }
                 
                 System.out.print("Entrez le numéro du fichier à télécharger : ");
                 fileIndex = Integer.parseInt(sc.nextLine());
@@ -81,33 +82,37 @@ public class Client {
             output.flush();
             String nomFichier = input.readUTF();
             long tailleFichier = input.readLong();
-
-            int nbBlocs = (int) Math.ceil((double) tailleFichier / c.tailleBloc); //Divise la taille du fichier par la taille d'un bloc et arrondit à l'entier supérieur
+            
+            int nbBlocs = (int) Math.ceil((double) tailleFichier / c.tailleBloc); // Divise la taille du fichier par la
+            // taille d'un bloc et arrondit à
+            // l'entier supérieur
             byte[] fichierRecu = new byte[(int) tailleFichier];
             ExecutorService pool = Executors.newFixedThreadPool(c.Dc);
             List<Future<byte[]>> resultats = new ArrayList<>();
-
+            
             // Téléchargement des blocs
             for (int i = 0; i < nbBlocs; i++) {
-                BlocDownloader tache = new BlocDownloader("127.0.0.1", 12345, fileIndex, i);
+                BlocDownloader tache = new BlocDownloader(c.adresse, c.port, fileIndex, i);
                 Future<byte[]> future = pool.submit(tache);
                 resultats.add(future);
-                if(isSocketClosed(input, output)) {
+                if (isSocketClosed(input, output)) {
                     pool.shutdownNow(); // Arrêter le pool si le socket est fermé
                     System.out.println("Téléchargement annulé.");
                     return;
-                };
+                }
+                ;
             }
             
             // Réassemblage
             for (int i = 0; i < resultats.size(); i++) {
                 byte[] bloc = resultats.get(i).get();
                 System.arraycopy(bloc, 0, fichierRecu, i * c.tailleBloc, bloc.length);
-                if(isSocketClosed(input, output)) {
+                if (isSocketClosed(input, output)) {
                     pool.shutdownNow(); // Arrêter le pool si le socket est fermé
                     System.out.println("Téléchargement annulé.");
                     return;
-                };
+                }
+                ;
             }
             
             pool.shutdown();
@@ -129,20 +134,20 @@ public class Client {
             String hashHex = bytesToHex(hash);
             System.out.println("Hash du fichier téléchargé : " + hashHex);
             c.logger.info("Hash du fichier téléchargé : " + hashHex);
-
-            output.writeUTF("HASH " + fileIndex);  // Envoi de la commande HASH
-            output.writeUTF(hashHex);  // Envoi du hash au serveur
-
+            
+            output.writeUTF("HASH " + fileIndex); // Envoi de la commande HASH
+            output.writeUTF(hashHex); // Envoi du hash au serveur
+            
             String message = input.readUTF(); // Réponse du serveur
-            System.out.println(message); 
-            c.logger.info(message); 
-
+            System.out.println(message);
+            c.logger.info(message);
+            
             monitorThread.interrupt(); // Interruption du thread de vérification de la connexion
             socket.close();
             output.close();
             input.close();
             sc.close();
-
+            
         } catch (SocketException e) {
             System.out.println("Serveur fermé ou connexion interrompue.");
             c.logger.warning("Serveur fermé ou connexion interrompue.");
@@ -162,19 +167,19 @@ public class Client {
         }
         return sb.toString();
     }
-
+    
     public static boolean isSocketClosed(DataInputStream in, DataOutputStream out) {
         try {
             out.writeUTF("PING");
-            if(in.readUTF().equals("PONG")) {
+            if (in.readUTF().equals("PONG")) {
                 return false;
-            } 
+            }
         } catch (IOException e) {
             System.err.println("Socket fermé");
         }
         return true;
     }
-
+    
     public static Thread verifyThread(DataInputStream input, DataOutputStream output) {
         Thread monitorThread = new Thread(() -> {
             try {
@@ -185,7 +190,8 @@ public class Client {
                         System.exit(0);
                     }
                 }
-            } catch (InterruptedException ignored) {}
+            } catch (InterruptedException ignored) {
+            }
         });
         return monitorThread;
     }
