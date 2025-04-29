@@ -22,14 +22,14 @@ public class Server {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             logger.info("Server started on port: " + PORT);
 
-            failureSimulator = new FailureSimulator(15, 0.3); // Démarrage avec 15s de délai
+            failureSimulator = new FailureSimulator(1, 0.9); // Failure simulator avec 15s de délai
             failureSimulator.start();
 
             while (true) {
                 synchronized (Server.class) {
                     if (currentClients >= MAX_CLIENTS) {
                         try {
-                            Thread.sleep(100); // Petite pause si serveur saturé
+                            Thread.sleep(100); // Petite pause
                             continue;
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
@@ -62,18 +62,18 @@ public class Server {
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
-
+    
             writer.write("WELCOME\n");
             writer.flush();
-
+    
             String request = reader.readLine();
             if (request == null || !request.startsWith("REQUEST ")) {
                 clientSocket.close();
                 return;
             }
-
+    
             String fileName = request.substring(8).trim();
-
+    
             synchronized (Server.class) {
                 if (currentClients >= MAX_CLIENTS) {
                     logger.warning("Server full, trying helper for client...");
@@ -85,7 +85,7 @@ public class Server {
                 }
                 currentClients++;
             }
-
+    
             if (!files.containsKey(fileName)) {
                 writer.write("ERROR File not found\n");
                 writer.flush();
@@ -93,38 +93,54 @@ public class Server {
                 decreaseClientCount();
                 return;
             }
-
+    
             byte[] fileData = files.get(fileName);
             int blockSize = 1024;
             int totalBlocks = (int) Math.ceil((double) fileData.length / blockSize);
-
-            writer.write(String.valueOf(totalBlocks) + "\n");
+    
+            writer.write(totalBlocks + "\n");
             writer.flush();
-
+    
+            InputStream input = clientSocket.getInputStream();
+            OutputStream output = clientSocket.getOutputStream();
+    
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] data = new byte[1];
+    
             while (true) {
-                String blockRequest = reader.readLine();
-                if (blockRequest == null) break;
-
-                if (blockRequest.startsWith("BLOCK ")) {
-                    String[] parts = blockRequest.split(" ");
-                    if (parts.length < 3) continue;
-
-                    int blockIndex = Integer.parseInt(parts[2]);
-                    int start = blockIndex * blockSize;
-                    int end = Math.min(fileData.length, start + blockSize);
-
-                    clientSocket.getOutputStream().write(fileData, start, end - start);
-                    clientSocket.getOutputStream().flush();
-
-                    logger.info("Sent block " + blockIndex + " to client.");
-                } else if (blockRequest.startsWith("MD5 ")) {
-                    logger.info("Received MD5 checksum: " + blockRequest.substring(4));
-                    break;
-                } else {
-                    logger.warning("Unknown request received: " + blockRequest);
+                int bytesRead = input.read(data);
+                if (bytesRead == -1) {
+                    break; // Client fermé
+                }
+    
+                buffer.write(data, 0, bytesRead);
+                String message = buffer.toString("UTF-8");
+    
+                if (message.endsWith("\n")) {
+                    message = message.trim();
+                    buffer.reset(); // Vide le buffer après traitement
+    
+                    if (message.startsWith("BLOCK ")) {
+                        String[] parts = message.split(" ");
+                        if (parts.length < 3) continue;
+    
+                        int blockIndex = Integer.parseInt(parts[2]);
+                        int start = blockIndex * blockSize;
+                        int end = Math.min(fileData.length, start + blockSize);
+    
+                        output.write(fileData, start, end - start);
+                        output.flush();
+    
+                        logger.info("Sent block " + blockIndex + " to client.");
+                    } else if (message.startsWith("MD5 ")) {
+                        logger.info("Received MD5 checksum: " + message.substring(4));
+                        break;
+                    } else {
+                        logger.warning("Unknown message from client: " + message);
+                    }
                 }
             }
-
+    
         } catch (IOException e) {
             logger.warning("Error handling client: " + e.getMessage());
         } finally {
@@ -135,7 +151,7 @@ public class Server {
             tryServeWaitingClients();
         }
     }
-
+    
     private static boolean redirectToTrustedHelper(Socket clientSocket, String fileName) {
         try {
             String token = generateToken();

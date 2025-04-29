@@ -45,34 +45,35 @@ public class Client {
             socket = new Socket(host, port);
             socket.setSoTimeout(5000);
             logger.info("Connected to: " + host + ":" + port);
-
+    
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-
+    
             String line = reader.readLine();
             if (line == null) {
-                logger.warning("Disconnected immediately after connection.");
+                logger.warning("No response from server.");
                 return false;
             }
-            
-
+    
             if (line.startsWith("USE_HELPER")) {
                 // Traitement de la redirection
                 String[] parts = line.split(" ");
-                if (parts.length < 4) {
-                    logger.severe("Malformed USE_HELPER message.");
+                if (parts.length != 4) {
+                    logger.severe("Malformed USE_HELPER message: " + line);
                     return false;
                 }
                 String helperIp = parts[1];
                 int helperPort = Integer.parseInt(parts[2]);
                 String helperToken = parts[3];
+                logger.info("Redirecting to trusted helper at " + helperIp + ":" + helperPort);
+    
                 socket.close();
                 return attemptDownload(helperIp, helperPort, helperToken);
             }
-
+    
             if (line.startsWith("WELCOME") || line.startsWith("WELCOME_FROM_TRUSTED")) {
                 if (token != null) {
-                    // Si connecté à un trusted, envoyer le token pour validation
+                    // Envoyer le token si on est redirigé
                     writer.write("TOKEN " + token + "\n");
                     writer.flush();
                     String response = reader.readLine();
@@ -81,58 +82,54 @@ public class Client {
                         return false;
                     }
                 }
-
+    
                 // Envoyer la demande de fichier
                 writer.write("REQUEST " + fileId + "\n");
                 writer.flush();
-
+    
                 String response = reader.readLine();
                 if (response == null || response.startsWith("DISCONNECT")) {
                     logger.warning("Disconnected after request.");
                     return false;
                 }
-
+    
                 if (response.startsWith("ERROR")) {
                     logger.severe("Server responded with error: " + response);
                     return false;
                 }
-
+    
                 int totalBlocks = Integer.parseInt(response.trim());
                 logger.info("Total blocks to download: " + totalBlocks);
-
-                socket.close(); // socket principale fermée après info sur nb de blocs
-
-                // Télécharger avec BlockDownloader
-                BlockDownloader downloader = new BlockDownloader(host, port, fileId, totalBlocks, DC, blockSize, logger);
+    
+                BlockDownloader downloader = new BlockDownloader(socket, fileId, totalBlocks, DC, blockSize, logger);
                 byte[][] blocks = downloader.downloadAllBlocks();
-
+    
                 if (isDisconnected) {
                     logger.warning("Download interrupted.");
                     return false;
                 }
-
+    
                 File downloadDir = new File("download");
                 if (!downloadDir.exists()) downloadDir.mkdir();
-
+    
                 FileOutputStream fos = new FileOutputStream("download/downloaded-" + fileId + "-" + clientId + ".bin");
                 for (byte[] b : blocks) fos.write(b);
                 fos.close();
-
+    
                 logger.info("File downloaded successfully.");
-
+    
                 return true;
             }
-
+    
             logger.warning("Unexpected server message: " + line);
             return false;
-
+    
         } catch (SocketTimeoutException e) {
             logger.warning("Timeout: " + e.getMessage());
             return false;
         } catch (IOException e) {
             isDisconnected = true;
             logger.warning("IOException: " + e.getMessage());
-            logger.warning("Client interrupted during download. Download failed.");
             return false;
         } finally {
             if (socket != null && !socket.isClosed()) {
@@ -140,7 +137,7 @@ public class Client {
             }
         }
     }
-
+    
     private void becomeTrustedClient() {
         try {
             int helperPort = 20000 + clientId;
