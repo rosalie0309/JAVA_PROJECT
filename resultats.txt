@@ -1,0 +1,30 @@
+[INFO] Lancement du test numéro 1
+[INFO] Fin du test numéro 1
+--------------------
+[INFO] Lancement du test numéro 2
+[INFO] Fin du test numéro 2
+--------------------
+[INFO] Lancement du test numéro 3
+[INFO] Fin du test numéro 3
+--------------------
+[INFO] Lancement du test numéro 4
+[INFO] Fin du test numéro 4
+--------------------
+[INFO] Lancement du test numéro 5
+[INFO] Fin du test numéro 5
+--------------------
+[INFO] Lancement du test numéro 6
+[INFO] Fin du test numéro 6
+--------------------
+[INFO] Lancement du test numéro 7
+[INFO] Fin du test numéro 7
+--------------------
+[INFO] Lancement du test numéro 8
+[INFO] Fin du test numéro 8
+--------------------
+[INFO] Lancement du test numéro 9
+[INFO] Fin du test numéro 9
+--------------------
+[INFO] Lancement du test numéro 10
+[INFO] Fin du test numéro 10
+--------------------

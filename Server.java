@@ -1,6 +1,7 @@
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -50,7 +51,7 @@ public class Server {
      * @throws IOException Si une erreur d'entrée/sortie se produit lors de l'ouverture du socket.
      */
     public void start() throws IOException {
-        ServerSocket serverSocket = new ServerSocket(port);
+        ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"));
         logger.info("Serveur démarré sur le port " + port);
 
         while (true) {

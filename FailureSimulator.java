@@ -1,14 +1,18 @@
 import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.Logger;
 
 public class FailureSimulator {
 
     private final List<Socket> activeTransfers = Collections.synchronizedList(new ArrayList<>());
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private static final Logger logger = Log.setup("FailureSimulator", "failuresimulator.log");
+
 
     private final double probability; // entre 0.0 et 1.0
     private final int intervalSeconds;
+    private int count = 0;
 
     public FailureSimulator(double probability, int intervalSeconds) {
         this.probability = probability;
@@ -43,6 +47,8 @@ public class FailureSimulator {
                     try {
                         System.out.println(">>> Simulating failure: closing connection");
                         socket.close();
+                        logger.info("[METRICS] COUPURE_CLIENT=" + socket.getPort());
+                        count++;
                         activeTransfers.remove(socket);
                     } catch (Exception e) {
                         System.err.println("Error while closing socket: " + e.getMessage());
@@ -51,4 +57,6 @@ public class FailureSimulator {
             }
         }
     }
+
+
 }

@@ -12,7 +12,7 @@ public class Client {
     private int tailleBloc = 1024;
     private int Dc = 4; 
     private Logger logger = Log.setup("Client", "client.log");
-    private String adresse = "127.0.0.1";
+    private String adresse = "192.168.77.116";
     private int port = 12345;
 
     /**
@@ -39,9 +39,11 @@ public class Client {
         DataInputStream input = new DataInputStream(socket.getInputStream());
         Scanner sc = new Scanner(System.in);
         ) {
+            long startTime = System.currentTimeMillis();
 
             output.writeUTF("CLIENT_MAIN");
             output.flush();
+
 
 
             Thread monitorThread = verifyThread(input, output); // Création du thread de vérification de la connexion
@@ -89,7 +91,7 @@ public class Client {
 
             // Téléchargement des blocs
             for (int i = 0; i < nbBlocs; i++) {
-                BlocDownloader tache = new BlocDownloader("127.0.0.1", 12345, fileIndex, i);
+                BlocDownloader tache = new BlocDownloader(c.adresse, c.port, fileIndex, i);
                 Future<byte[]> future = pool.submit(tache);
                 resultats.add(future);
                 if(isSocketClosed(input, output)) {
@@ -142,6 +144,10 @@ public class Client {
             output.close();
             input.close();
             sc.close();
+
+            long endTime = System.currentTimeMillis();
+
+            c.logger.info("[METRICS] TEMPS=" + (endTime - startTime));
 
         } catch (SocketException e) {
             System.out.println("Serveur fermé ou connexion interrompue.");
