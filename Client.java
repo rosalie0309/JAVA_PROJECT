@@ -47,7 +47,10 @@ public class Client {
             output.writeUTF("CLIENT_MAIN");
             output.flush();
 
-            Thread monitorThread = verifyThread(input, output); // Création du thread de vérification de la connexion
+            c.logger.info("Client connecté au serveur : " + c.adresse + ":" + c.port);
+            c.logger.info("Client : " + socket.getInetAddress().getHostAddress() + ":" + socket.getPort());
+
+            Thread monitorThread = verifyThread(input, output, c.logger); // Création du thread de vérification de la connexion
             monitorThread.setDaemon(true); // Permet de ne pas bloquer la fermeture du programme
 
             String slave = input.readUTF();
@@ -147,6 +150,7 @@ public class Client {
 
             c.logger.info("[METRICS] TEMPS=" + (endTime - startTime));
 
+
             monitorThread.interrupt(); // Interruption du thread de vérification de la connexion
             socket.close();
             output.close();
@@ -185,14 +189,16 @@ public class Client {
         return true;
     }
 
-    public static Thread verifyThread(DataInputStream input, DataOutputStream output) {
+    public static Thread verifyThread(DataInputStream input, DataOutputStream output, Logger logger) {
         Thread monitorThread = new Thread(() -> {
             try {
                 while (true) {
                     Thread.sleep(500); // Vérifier toutes les 200 ms pour éviter de surcharger le CPU
                     if (isSocketClosed(input, output)) {
                         System.out.println("\n[INFO] Socket fermé. Fin du programme.");
+                        logger.info("Client déconnecté");
                         System.exit(0);
+
                     }
                 }
             } catch (InterruptedException ignored) {
