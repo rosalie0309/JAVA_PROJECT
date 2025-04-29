@@ -3,28 +3,36 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
+/**
+ * Classe ClientSlave qui gère la communication avec un client.
+ */
 public class ClientSlave implements Runnable {
     private final Socket socket;
     private final File[] files;
     private final ArrayList<String> trustedClients;
     private static final Logger logger = Log.setup("ClientSlave", "client_slave.log");
     
-    
+
+    /**
+     * Constructeur de la classe ClientSlave.
+     * @param socket socket de connexion avec le client
+     * @param files tableau de fichiers disponibles sur le serveur
+     * @param trustedClients liste des clients de confiance
+     */
     public ClientSlave(Socket socket, File[] files, ArrayList<String> trustedClients) {
         this.socket = socket;
         this.files = files;
         this.trustedClients = trustedClients;
     }
 
+    /**
+     * Méthode run qui gère la communication avec le client.
+     */
     @Override
     public void run() {
-        // Logique de traitement pour CLIENT_MAIN
-        // LIST, HASH, etc.
         try (
         DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
         DataInputStream inputClient = new DataInputStream(socket.getInputStream())
@@ -33,12 +41,14 @@ public class ClientSlave implements Runnable {
             outer : while(true) {
                 String commande = inputClient.readUTF();
                 
-                if(!commande.equals("PING")) logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
+                if(!commande.equals("PING")) logger.info(commande + " : " + socket.getInetAddress().getHostAddress()); // Ne pas afficher les PING dans le log
+
+                // Envoyer la liste des fichiers disponibles au client
                 if ("LIST".equals(commande)) {
-                    // Envoyer la liste des fichiers disponibles au client
                     sendFileList(outputClient);
                 }
                 
+                // Envoyer les informations (nom et taille) sur le fichier demandé au client
                 if (commande.startsWith("GET_INFO")) {
                     infoOnFile(outputClient, commande);
                 }
@@ -48,8 +58,8 @@ public class ClientSlave implements Runnable {
                     outputClient.writeUTF("PONG");
                 }
                 
+                // Vérification du MD5 du fichier
                 if (commande.startsWith("HASH")) {
-                    // Si la commande est de type "HASH", on gère la vérification du hash
                     handleFileHash(inputClient, outputClient, commande);
                     break outer;
                 } 
@@ -65,6 +75,11 @@ public class ClientSlave implements Runnable {
         
     }
     
+    /**
+     * Envoie le nombre et la liste des fichiers disponibles au client.
+     * @param outputClient flux de sortie vers le client
+     * @throws IOException
+     */
     private void sendFileList(DataOutputStream outputClient) throws IOException {
         // Envoyer la liste des fichiers disponibles au client
         logger.info("Envoi de la liste des fichiers disponibles au client.");
@@ -78,6 +93,12 @@ public class ClientSlave implements Runnable {
         }
     }
     
+    /**
+     * Envoie les informations (nom et taille) sur le fichier demandé au client.
+     * @param outputClient flux de sortie vers le client
+     * @param commande commande reçue du client
+     * @throws IOException
+     */
     private void infoOnFile(DataOutputStream outputClient, String commande) throws IOException {
         // Envoyer les informations sur le fichier demandé au client
         int fileIndex = Integer.parseInt(commande.split(" ")[1]);
@@ -88,6 +109,13 @@ public class ClientSlave implements Runnable {
         outputClient.writeLong(fileSize);
     }
     
+    /**
+     * Compare le MD5 reçu du fichier avec celui du serveur. Ajoute le client à la liste des clients de confiance si le hash est correct.
+     * @param inputClient
+     * @param outputClient
+     * @param commande
+     * @throws IOException
+     */
     private void handleFileHash(DataInputStream inputClient, DataOutputStream outputClient, String commande) throws IOException {
         // Recevoir et traiter le hash envoyé par le client
         logger.info("Traitement de la commande de hash.");
@@ -127,6 +155,11 @@ public class ClientSlave implements Runnable {
         }
     }
     
+    /**
+     * Convertit un tableau de bytes en une chaîne hexadécimale.
+     * @param bytes tableau de bytes à convertir
+     * @return chaîne hexadécimale représentant le tableau de bytes
+     */
     public static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {

@@ -4,15 +4,37 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/**
+ * Classe Client qui gère le téléchargement de fichiers depuis un serveur.
+ * Elle permet de télécharger un fichier en plusieurs blocs de manière parallèle.
+ */
 public class Client {
     private int tailleBloc = 1024;
-    private int Dc = 4; // nombre de téléchargements parallèles
+    private int Dc = 4; 
     private Logger logger = Log.setup("Client", "client.log");
-    
+    private String adresse = "127.0.0.1";
+    private int port = 12345;
+
+    /**
+     * 
+     * @param args
+     */
     public static void main(String[] args) {
         Client c = new Client();
+        int fileIndex = -1;
+
+        if(args.length > 0) {
+            for (String arg : args) {
+                if (arg.startsWith("--file=")) fileIndex = Integer.parseInt(arg.split("=")[1]);
+                if (arg.startsWith("--DC=")) c.Dc = Integer.parseInt(arg.split("=")[1]);
+                if (arg.startsWith("--adresse=")) c.adresse = arg.split("=")[1];
+                if (arg.startsWith("--port=")) c.port = Integer.parseInt(arg.split("=")[1]);
+            }
+        }
+
+
         try (
-        Socket socket = new Socket("127.0.0.1", 12345);
+        Socket socket = new Socket(c.adresse, c.port);
         DataOutputStream output = new DataOutputStream(socket.getOutputStream());
         DataInputStream input = new DataInputStream(socket.getInputStream());
         Scanner sc = new Scanner(System.in);
@@ -21,21 +43,15 @@ public class Client {
             output.writeUTF("CLIENT_MAIN");
             output.flush();
 
-            int fileIndex = -1;
 
-            Thread monitorThread = verifyThread(input, output); // Lancement du thread de vérification de la connexion
+            Thread monitorThread = verifyThread(input, output); // Création du thread de vérification de la connexion
             monitorThread.setDaemon(true); // Permet de ne pas bloquer la fermeture du programme
             
             String slave = input.readUTF();
-            if(slave.equals("CLIENT_SLAVE")) monitorThread.start();
+            if(slave.equals("CLIENT_SLAVE")) monitorThread.start(); // Attendre le début du clientSlave pour lancer le thread de vérification de la connexion
         
 
-            if(args.length > 0) {
-                for (String arg : args) {
-                    if (arg.startsWith("--file=")) fileIndex = Integer.parseInt(arg.split("=")[1]);
-                    if (arg.startsWith("--DC=")) c.Dc = Integer.parseInt(arg.split("=")[1]);
-                }
-            }
+            
 
             if(args.length == 0 || fileIndex == -1) {
                 // Demande de la liste des fichiers

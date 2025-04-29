@@ -1,15 +1,19 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.util.Random;
 
-
+/**
+ * Classe de test pour lancer le serveur et les clients.
+ * Permet de spécifier le nombre de clients, le DC et la probabilité de déconnexion via des arguments de ligne de commande.
+ */
 public class Test {
     
+    /**
+     * Fonction principale pour lancer le serveur et les clients.
+     * @param args Arguments de la ligne de commande pour spécifier le nombre de clients, le DC et la probabilité de déconnexion.
+     * Sinon il existe une valeur par défaut pour chaque paramètre.
+     */
     public static void main(String[] args) {
-        int numClients = 3; // Nombre de clients à lancer
+        int numClients = 3;
         int DC = 4;
         double P = 0.2;
         int fileindex = -1;
@@ -34,8 +38,8 @@ public class Test {
             Process[] clientProcesses = new Process[numClients];
             for (int i = 0; i < numClients; i++) {
                 
+                // Si fileindex n'est pas spécifié, choisir un index de fichier aléatoire
                 if(fileindex == -1) {
-                    // Si fileindex n'est pas spécifié, choisir un index de fichier aléatoire
                     fileindex = random.nextInt(4);
                 }
                 

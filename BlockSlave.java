@@ -6,17 +6,29 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.logging.Logger;
 
+/**
+ * Classe BlockSlave qui gère le téléchargement de blocs de fichiers pour un client.
+ */
 public class BlockSlave implements Runnable {
     private final Socket socket;
     private final File[] files;
     private final int tailleBloc = 1024; // Taille d'un bloc de téléchargement (en octets)
     private static final Logger logger = Log.setup("BlocSlave", "bloc_slave.log");
 
+    /**
+     * Constructeur de la classe BlockSlave.
+     * @param socket socket de connexion avec le blocdownloader
+     * @param files tableau de fichiers disponibles sur le serveur
+     */
     public BlockSlave(Socket socket, File[] files) {
         this.socket = socket;
         this.files = files;
     }
 
+    /**
+     * Gère la communication avec le blocdownloader.
+     * Lit la commande du blocdownloader et traite les demandes de téléchargement de blocs.
+     */
     @Override
     public void run() {
         // Logique de traitement pour REQUIRE <fichier> <bloc>
@@ -28,8 +40,9 @@ public class BlockSlave implements Runnable {
             // Lire la demande du client
             String commande = inputClient.readUTF();
             logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
+
+            // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
             if (commande.startsWith("REQUIRE")) {
-                // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
                 handleDownload(commande, outputClient);
                 return;
             }
@@ -40,6 +53,12 @@ public class BlockSlave implements Runnable {
         }
     }
 
+    /**
+     * Gère le téléchargement d'un bloc de fichier demandé par un blocdownloader.
+     * @param commande Commande de téléchargement contenant l'index du fichier et l'index du bloc
+     * @param outputClient Flux de sortie pour envoyer le bloc au blocdownloader
+     * @throws IOException
+     */
     private void handleDownload(String commande, DataOutputStream outputClient) throws IOException {
         // Extraire l'index du fichier et l'index du bloc à télécharger
         logger.info("Traitement de la commande de téléchargement.");

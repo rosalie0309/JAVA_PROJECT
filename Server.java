@@ -1,11 +1,17 @@
-import java.io.*;
-import java.net.*;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Scanner;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.logging.Logger;
 
+/**
+ * Classe du serveur qui lance le serveur et gère les connexions des clients et des blocs de téléchargement.
+ */
 public class Server {
     private final int port;
     private final ExecutorService pool;
@@ -16,6 +22,13 @@ public class Server {
     private FailureSimulator failureSimulator;
     private double probability;
 
+    /**
+     * Constructeur de la classe Server.
+     * @param port Le port sur lequel le serveur écoute les connexions.
+     * @param poolSize La taille du pool de threads pour gérer les connexions.
+     * @param failureSimulator Le simulateur de déconnexions à utiliser.
+     * @param probability La probabilité de déconnexion.
+     */
     public Server(int port, int poolSize, FailureSimulator failureSimulator, double probability) {
         this.port = port;
         this.pool = Executors.newFixedThreadPool(poolSize);
@@ -32,6 +45,10 @@ public class Server {
         this.files = dir.listFiles(); // Liste les fichiers dans le répertoire
     }
 
+    /**
+     * Démarre le serveur et écoute les connexions entrantes. Redirige les connexions vers la fonction de gestionnaire de connexion.
+     * @throws IOException Si une erreur d'entrée/sortie se produit lors de l'ouverture du socket.
+     */
     public void start() throws IOException {
         ServerSocket serverSocket = new ServerSocket(port);
         logger.info("Serveur démarré sur le port " + port);
@@ -42,6 +59,10 @@ public class Server {
         }
     }
 
+    /**
+     * Gère la connexion d'un client ou d'un bloc de téléchargement.
+     * @param socket Le socket de la connexion entrante
+     */
     private void handleConnection(Socket socket) {
         try {
             DataInputStream input = new DataInputStream(socket.getInputStream());
@@ -96,6 +117,11 @@ public class Server {
         }
     }
 
+    /**
+     * Fonction principale pour démarrer le serveur et le simulateur de déconnexion.
+     * @param args Les arguments de la ligne de commande.
+     * @throws IOException
+     */
     public static void main(String[] args) throws IOException {
 
         int port = 12345; // Port du serveur
@@ -107,7 +133,7 @@ public class Server {
         }
 
         //FailureSimulator failureSimulator = new FailureSimulator(1.0, 4); 
-        FailureSimulator failureSimulator = new FailureSimulator(failureProbability, 5);// 30% de chances toutes les 10 secondes    
+        FailureSimulator failureSimulator = new FailureSimulator(failureProbability, 5);// 20% de chances toutes les 5 secondes    
         failureSimulator.start();
 
         Server server = new Server(port, poolSize, failureSimulator, failureProbability);
