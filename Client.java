@@ -139,15 +139,16 @@ public class Client {
             System.out.println(message); 
             c.logger.info(message); 
 
+            long endTime = System.currentTimeMillis();
+
+            c.logger.info("[METRICS] TEMPS=" + (endTime - startTime));
+
             monitorThread.interrupt(); // Interruption du thread de vérification de la connexion
             socket.close();
             output.close();
             input.close();
             sc.close();
-
-            long endTime = System.currentTimeMillis();
-
-            c.logger.info("[METRICS] TEMPS=" + (endTime - startTime));
+            return;
 
         } catch (SocketException e) {
             System.out.println("Serveur fermé ou connexion interrompue.");
