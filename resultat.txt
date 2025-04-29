@@ -1,4 +1,2 @@
-avr. 29, 2025 2:18:17 PM FailureSimulator maybeInterruptConnection
-INFOS: [METRICS] COUPURE_CLIENT=16979
-avr. 29, 2025 2:19:07 PM FailureSimulator maybeInterruptConnection
-INFOS: [METRICS] COUPURE_CLIENT=17087
+avr. 29, 2025 3:06:05 PM FailureSimulator maybeInterruptConnection
+INFOS: [METRICS] COUPURE_CLIENT=17867

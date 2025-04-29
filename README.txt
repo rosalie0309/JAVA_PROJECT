@@ -1,9 +1,10 @@
 Projet Java Serveur Multi Thread pour le téléchargement de fichiers
-Groupe : Corine Tomeyum, Justin Mouaromba, Mamoudou ..., Noël Mariaratnam
+Groupe : Corine Tomeyum, Justin Mouaromba, Mamoudou Sidibe, Noël Mariaratnam
 
 Pour compiler le projet, il faut utiliser la commande suivante : javac *.java
 
 Pour les commandes suivantes, il faut remplacer entièrement <var> par la valeur souhaitée.
+La valeur <idfile> doit être comprise entre 0 et 3 inclus.
 
 Pour exécuter Test, il faut utiliser la commande suivante : java Test --clients=<nb_clients> --DC=<nb_blocs> --P=<probabilite déconnexion> --file=<idfile> 
 Pour lancer un serveur : 
