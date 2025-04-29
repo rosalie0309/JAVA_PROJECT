@@ -1,0 +1,24 @@
+avr. 29, 2025 3:05:23 PM Client main
+INFO: Fichier téléchargé et enregistré sous : Downloads/f37aa62c-228b-4f8f-a136-2f5486b51263_FileA.txt
+avr. 29, 2025 3:05:23 PM Client main
+INFO: Hash du fichier téléchargé : 288a28975177e84eed6f3badf65601cd
+avr. 29, 2025 3:05:23 PM Client main
+INFO: OK
+avr. 29, 2025 3:05:23 PM Client main
+INFO: [METRICS] TEMPS=3781
+avr. 29, 2025 3:05:31 PM Client main
+INFO: Fichier téléchargé et enregistré sous : Downloads/e477b80d-694c-4be9-a09b-1d5cd8b053c3_FileA.txt
+avr. 29, 2025 3:05:31 PM Client main
+INFO: Hash du fichier téléchargé : 288a28975177e84eed6f3badf65601cd
+avr. 29, 2025 3:05:32 PM Client main
+INFO: OK
+avr. 29, 2025 3:05:32 PM Client main
+INFO: [METRICS] TEMPS=2634
+avr. 29, 2025 3:05:39 PM Client main
+INFO: Fichier téléchargé et enregistré sous : Downloads/410650c4-3ef1-4491-8904-165254fc8ee4_FileA.txt
+avr. 29, 2025 3:05:39 PM Client main
+INFO: Hash du fichier téléchargé : 288a28975177e84eed6f3badf65601cd
+avr. 29, 2025 3:05:40 PM Client main
+INFO: OK
+avr. 29, 2025 3:05:40 PM Client main
+INFO: [METRICS] TEMPS=2523
